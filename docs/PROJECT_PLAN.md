@@ -1,6 +1,6 @@
 # VRChat용 SteamVR 오버레이 키보드 기획
 
-상태: 기획 초안. 공식 API 및 공개 소스 조사는 [기술 조사](TECHNICAL_FEASIBILITY.md)에 정리했다. Windows, SteamVR, VRChat에서의 실제 동작은 아직 검증하지 않았다.
+상태: 첫 프로토타입 구현 완료. 사용자 확인으로 SteamVR 컨트롤러 입력과 VRChat Chatbox OSC 입력이 동작했다. 일본어 IME 모드 전환도 해결됐다. 한국어 가상 키 입력은 자모별로 커밋되는 문제가 남아 있고, TSF 후보 선택·중국어 입력·다국어 OSC 왕복은 확인되지 않았다. 상세 결과는 [프로토타입 README](../prototype/windows-ime-overlay/README.md)에 기록했다.
 
 ## 목표와 범위
 

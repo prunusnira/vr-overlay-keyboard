@@ -30,6 +30,8 @@ add_executable(windows-ime-overlay
     src/main.cpp
     src/ime/tsf_input.cpp
     src/ime/tsf_input.h
+    src/osc/osc_client.cpp
+    src/osc/osc_client.h
     src/overlay/openvr_overlay.cpp
     src/overlay/openvr_overlay.h
     src/ui/keyboard_widget.cpp
@@ -43,8 +45,9 @@ target_link_libraries(windows-ime-overlay PRIVATE
     "${OPENVR_LIBRARY}"
     ole32
     oleaut32
-    msctf
+    uuid
     user32
+    ws2_32
 )
 
 find_file(OPENVR_RUNTIME_DLL openvr_api.dll

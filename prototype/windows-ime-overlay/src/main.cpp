@@ -1,4 +1,5 @@
 #include "ime/tsf_input.h"
+#include "osc/osc_client.h"
 #include "overlay/openvr_overlay.h"
 #include "ui/keyboard_widget.h"
 
@@ -15,6 +16,11 @@ int main(int argc, char *argv[]) {
     QApplication application(argc, argv);
     KeyboardWidget widget;
     widget.show();
+
+    OscClient oscClient;
+    widget.setSendChatboxCallback([&oscClient](const QString &text, QString *error) {
+        return oscClient.sendChatboxInput(text, error);
+    });
 
     TsfInput ime;
     ime.setCandidateCallback([&widget](const CandidateSnapshot &snapshot) {
@@ -33,6 +39,8 @@ int main(int argc, char *argv[]) {
     if (FAILED(comResult)) {
         widget.appendLog(QStringLiteral("CoInitializeEx failed: 0x%1")
                              .arg(static_cast<quint32>(comResult), 8, 16, QLatin1Char('0')));
+    } else if (application.arguments().contains(QStringLiteral("--disable-tsf-sink"))) {
+        widget.appendLog(QStringLiteral("Diagnostic mode: TSF UI-less candidate sink disabled."));
     } else {
         QString tsfError;
         if (!ime.initialize(&tsfError)) {

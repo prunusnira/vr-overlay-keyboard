@@ -244,23 +244,27 @@ bool TsfInput::sendVirtualKey(WORD virtualKey, bool withShift, QString *errorMes
 
     std::array<INPUT, 4> inputs{};
     UINT count = 0;
-    auto appendKey = [&inputs, &count](WORD key, DWORD flags) {
+    // Preserve the physical key position so the active IME can map it like hardware input.
+    const bool useScanCode = (virtualKey >= 'A' && virtualKey <= 'Z') ||
+                             virtualKey == VK_BACK || virtualKey == VK_SPACE ||
+                             virtualKey == VK_RETURN;
+    auto appendKey = [&inputs, &count](WORD key, DWORD flags, bool scanCode) {
         INPUT &input = inputs[count++];
         input.type = INPUT_KEYBOARD;
         input.ki.wVk = key;
         input.ki.wScan = static_cast<WORD>(MapVirtualKeyW(key, MAPVK_VK_TO_VSC));
-        input.ki.dwFlags = flags;
+        input.ki.dwFlags = flags | (scanCode ? KEYEVENTF_SCANCODE : 0);
         input.ki.time = 0;
         input.ki.dwExtraInfo = 0;
     };
 
     if (withShift) {
-        appendKey(VK_SHIFT, 0);
+        appendKey(VK_SHIFT, 0, useScanCode);
     }
-    appendKey(virtualKey, 0);
-    appendKey(virtualKey, KEYEVENTF_KEYUP);
+    appendKey(virtualKey, 0, useScanCode);
+    appendKey(virtualKey, KEYEVENTF_KEYUP, useScanCode);
     if (withShift) {
-        appendKey(VK_SHIFT, KEYEVENTF_KEYUP);
+        appendKey(VK_SHIFT, KEYEVENTF_KEYUP, useScanCode);
     }
 
     const UINT sent = SendInput(count, inputs.data(), sizeof(INPUT));

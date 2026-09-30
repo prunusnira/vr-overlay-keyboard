@@ -8,9 +8,12 @@
 #include <QFont>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QInputMethodEvent>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMetaObject>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPainter>
@@ -80,13 +83,14 @@ KeyboardWidget::KeyboardWidget(QWidget *parent)
     root->addWidget(title);
 
     auto *description = new QLabel(
-        QStringLiteral("VRChat OSC is outside this prototype. Choose an input language, then click Focus input before sending virtual keys."), this);
+        QStringLiteral("Compose text with the active Windows IME, then fill the VRChat Chatbox using OSC. Click Focus input before sending virtual keys."), this);
     description->setWordWrap(true);
     root->addWidget(description);
 
     m_editor = new QLineEdit(this);
     m_editor->setPlaceholderText(QStringLiteral("Type here with the active Windows IME"));
     m_editor->setFocusPolicy(Qt::StrongFocus);
+    m_editor->installEventFilter(this);
     root->addWidget(m_editor);
 
     auto *languageRow = new QHBoxLayout();
@@ -128,12 +132,16 @@ KeyboardWidget::KeyboardWidget(QWidget *parent)
     auto *focusButton = new QPushButton(QStringLiteral("Focus input"), this);
     auto *showButton = new QPushButton(QStringLiteral("Show in SteamVR"), this);
     auto *clearButton = new QPushButton(QStringLiteral("Clear input"), this);
+    auto *sendChatboxButton = new QPushButton(QStringLiteral("VRChat 입력란 채우기"), this);
     focusButton->setFocusPolicy(Qt::NoFocus);
     showButton->setFocusPolicy(Qt::NoFocus);
     clearButton->setFocusPolicy(Qt::NoFocus);
+    sendChatboxButton->setFocusPolicy(Qt::NoFocus);
+    sendChatboxButton->setMinimumHeight(48);
     controls->addWidget(focusButton);
     controls->addWidget(showButton);
     controls->addWidget(clearButton);
+    controls->addWidget(sendChatboxButton);
     controls->addStretch(1);
     root->addLayout(controls);
 
@@ -141,8 +149,11 @@ KeyboardWidget::KeyboardWidget(QWidget *parent)
     m_status->setWordWrap(true);
     root->addWidget(m_status);
 
-    m_focusStatus = new QLabel(QStringLiteral("Windows foreground: unknown | editor focus: unknown"), this);
+    m_focusStatus = new QLabel(QStringLiteral("입력 상태 — Windows 전경 창: 확인 중 | 편집기 포커스: 확인 중"), this);
     m_focusStatus->setWordWrap(true);
+    m_focusStatus->setStyleSheet(QStringLiteral(
+        "QLabel { background: #26364a; border: 1px solid #60a5fa; border-radius: 5px; "
+        "padding: 7px; font-weight: 700; }"));
     root->addWidget(m_focusStatus);
 
     auto *candidateHeading = new QLabel(QStringLiteral("TSF candidates"), this);
@@ -232,11 +243,31 @@ KeyboardWidget::KeyboardWidget(QWidget *parent)
     connect(spaceButton, &QPushButton::clicked, this, [this]() { submitKey(VK_SPACE); });
     connect(enterButton, &QPushButton::clicked, this, [this]() { submitKey(VK_RETURN); });
     connect(hangulButton, &QPushButton::clicked, this, [this]() { submitKey(VK_HANGUL); });
-    connect(kanaButton, &QPushButton::clicked, this, [this]() { submitKey(VK_KANA); });
+    connect(kanaButton, &QPushButton::clicked, this, [this]() { submitKey(VK_IME_ON); });
     connect(kanjiButton, &QPushButton::clicked, this, [this]() { submitKey(VK_KANJI); });
+    connect(sendChatboxButton, &QPushButton::clicked, this, [this]() {
+        if (!m_sendChatboxCallback) {
+            m_status->setText(QStringLiteral("VRChat OSC sender is not initialized."));
+            appendLog(QStringLiteral("OSC send failed: no Chatbox sender is connected."));
+            return;
+        }
+
+        QString error;
+        if (!m_sendChatboxCallback(m_editor->text(), &error)) {
+            m_status->setText(error);
+            appendLog(QStringLiteral("OSC send failed: %1").arg(error));
+            return;
+        }
+
+        m_status->setText(QStringLiteral("OSC packet sent to VRChat Chatbox. Confirm OSC is enabled in VRChat."));
+        appendLog(QStringLiteral("OSC sent to 127.0.0.1:9000: /chatbox/input (send=false)."));
+    });
     connect(m_candidates, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         handleCandidateClick(m_candidates->row(item));
     });
+    for (QAbstractButton *button : findChildren<QAbstractButton *>()) {
+        button->installEventFilter(this);
+    }
 
     appendLog(QStringLiteral("Widget ready. Click Focus input, then Show in SteamVR."));
     refreshInputLanguage();
@@ -260,7 +291,29 @@ void KeyboardWidget::dispatchOverlayMouseEvent(QEvent::Type type, const QPointF 
 
     QPoint localPosition;
     QWidget *target = deepestChildAt(position.toPoint(), &localPosition);
+    auto *clickedButton = qobject_cast<QAbstractButton *>(target);
+    if (type == QEvent::MouseButtonRelease && m_pressedPointerButton) {
+        QAbstractButton *pressedButton = m_pressedPointerButton;
+        m_pressedPointerButton = nullptr;
+        const bool releasedOnSameButton = clickedButton == pressedButton;
+        pressedButton->setDown(false);
+        if (releasedOnSameButton && pressedButton->isEnabled()) {
+            // Invoke the button action without sending Qt a mouse event that can
+            // finalize the editor's active IME composition.
+            pressedButton->click();
+        }
+        return;
+    }
+
     if (!target) {
+        return;
+    }
+    if (type == QEvent::MouseButtonPress && clickedButton) {
+        if (m_pressedPointerButton) {
+            m_pressedPointerButton->setDown(false);
+        }
+        m_pressedPointerButton = clickedButton;
+        clickedButton->setDown(true);
         return;
     }
 
@@ -284,6 +337,10 @@ void KeyboardWidget::setCandidateCallback(CandidateCallback callback) {
 
 void KeyboardWidget::setShowOverlayCallback(ShowOverlayCallback callback) {
     m_showOverlayCallback = std::move(callback);
+}
+
+void KeyboardWidget::setSendChatboxCallback(SendChatboxCallback callback) {
+    m_sendChatboxCallback = std::move(callback);
 }
 
 void KeyboardWidget::updateCandidates(const CandidateSnapshot &snapshot) {
@@ -330,9 +387,18 @@ void KeyboardWidget::refreshInputStatus() {
     }
     const bool foregroundIsApp = foregroundProcessId == GetCurrentProcessId();
     const bool focused = editorHasFocus();
-    m_focusStatus->setText(QStringLiteral("Windows foreground: %1 | editor focus: %2")
-                               .arg(foregroundIsApp ? QStringLiteral("this app") : QStringLiteral("another app"))
-                               .arg(focused ? QStringLiteral("yes") : QStringLiteral("no")));
+    m_focusStatus->setText(QStringLiteral("입력 상태 — Windows 전경 창: %1 | 편집기 포커스: %2")
+                               .arg(foregroundIsApp ? QStringLiteral("이 앱") : QStringLiteral("다른 앱"))
+                               .arg(focused ? QStringLiteral("예") : QStringLiteral("아니요")));
+    if (!m_hasPreviousInputStatus || foregroundIsApp != m_previousForegroundIsApp ||
+        focused != m_previousEditorFocused) {
+        appendLog(QStringLiteral("Input focus changed: foreground=%1, editorFocus=%2")
+                      .arg(foregroundIsApp ? QStringLiteral("this app") : QStringLiteral("another app"))
+                      .arg(focused ? QStringLiteral("yes") : QStringLiteral("no")));
+        m_previousForegroundIsApp = foregroundIsApp;
+        m_previousEditorFocused = focused;
+        m_hasPreviousInputStatus = true;
+    }
 }
 
 void KeyboardWidget::refreshInputLanguage() {
@@ -351,6 +417,59 @@ void KeyboardWidget::refreshInputLanguage() {
 
 bool KeyboardWidget::editorHasFocus() const {
     return QApplication::focusWidget() == m_editor;
+}
+
+bool KeyboardWidget::eventFilter(QObject *watched, QEvent *event) {
+    auto logAfterEvent = [this](const QString &message) {
+        QMetaObject::invokeMethod(this, [this, message]() { appendLog(message); }, Qt::QueuedConnection);
+    };
+
+    auto *button = qobject_cast<QAbstractButton *>(watched);
+    auto *mouseEvent = static_cast<QMouseEvent *>(event);
+    if (button && event->type() == QEvent::MouseButtonPress && mouseEvent->button() == Qt::LeftButton) {
+        if (m_pressedMouseButton) {
+            m_pressedMouseButton->setDown(false);
+        }
+        m_pressedMouseButton = button;
+        button->setDown(true);
+        return true;
+    }
+    if (button && event->type() == QEvent::MouseMove && m_pressedMouseButton == button) {
+        button->setDown(button->rect().contains(mouseEvent->position().toPoint()));
+        return true;
+    }
+    if (button && event->type() == QEvent::MouseButtonRelease && m_pressedMouseButton) {
+        QAbstractButton *pressedButton = m_pressedMouseButton;
+        m_pressedMouseButton = nullptr;
+        const bool releasedOnSameButton = button == pressedButton && mouseEvent->button() == Qt::LeftButton;
+        const bool releasedInsideButton = pressedButton->rect().contains(mouseEvent->position().toPoint());
+        pressedButton->setDown(false);
+        if (releasedOnSameButton && releasedInsideButton && pressedButton->isEnabled()) {
+            pressedButton->click();
+        }
+        return true;
+    }
+
+    if (watched == m_editor && event->type() == QEvent::FocusIn) {
+        logAfterEvent(QStringLiteral("Editor focus event: FocusIn."));
+    } else if (watched == m_editor && event->type() == QEvent::FocusOut) {
+        logAfterEvent(QStringLiteral("Editor focus event: FocusOut."));
+    } else if (watched == m_editor && event->type() == QEvent::KeyPress) {
+        const auto *keyEvent = static_cast<const QKeyEvent *>(event);
+        logAfterEvent(QStringLiteral("Editor key event: key=0x%1 text=[%2] nativeVK=0x%3 nativeScan=0x%4")
+                          .arg(static_cast<quint32>(keyEvent->key()), 0, 16)
+                          .arg(keyEvent->text())
+                          .arg(keyEvent->nativeVirtualKey(), 0, 16)
+                          .arg(keyEvent->nativeScanCode(), 0, 16));
+    } else if (watched == m_editor && event->type() == QEvent::InputMethod) {
+        const auto *inputMethodEvent = static_cast<const QInputMethodEvent *>(event);
+        logAfterEvent(QStringLiteral("Editor IME event: preedit=[%1] commit=[%2] replaceStart=%3 replaceLength=%4")
+                          .arg(inputMethodEvent->preeditString())
+                          .arg(inputMethodEvent->commitString())
+                          .arg(inputMethodEvent->replacementStart())
+                          .arg(inputMethodEvent->replacementLength()));
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void KeyboardWidget::requestEditorFocus() {
@@ -384,6 +503,8 @@ void KeyboardWidget::submitKey(WORD virtualKey, bool withShift) {
     QString error;
     if (!m_keyCallback(virtualKey, withShift, &error)) {
         appendLog(error);
+    } else if (virtualKey == VK_IME_ON) {
+        appendLog(QStringLiteral("Requested Japanese Hiragana mode (VK_IME_ON) through SendInput."));
     }
 }
 
