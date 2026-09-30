@@ -1,3 +1,5 @@
 .agents
 .claude
 AGENTS.md
+/.vs/
+/prototype/windows-ime-overlay/build/
