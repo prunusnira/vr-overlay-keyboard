@@ -78,6 +78,7 @@ private:
     PointerCallback m_pointerCallback;
     InteractionStatusCallback m_interactionStatusCallback;
     std::string m_lastInteractionStatus;
+    keyboard::ControllerHand m_lastPointerHand = keyboard::ControllerHand::Right;
     keyboard::ControllerHand m_captureHand = keyboard::ControllerHand::Right;
     bool m_hasCaptureHand = false;
     bool m_selectWasPressed = false;

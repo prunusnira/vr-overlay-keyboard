@@ -9,7 +9,22 @@ WORD toVirtualKey(keyboard::KeyCode key) {
     if (key >= keyboard::KeyCode::A && key <= keyboard::KeyCode::Z) {
         return static_cast<WORD>('A' + static_cast<int>(key) - static_cast<int>(keyboard::KeyCode::A));
     }
+    if (key >= keyboard::KeyCode::Digit0 && key <= keyboard::KeyCode::Digit9) {
+        return static_cast<WORD>('0' + static_cast<int>(key) - static_cast<int>(keyboard::KeyCode::Digit0));
+    }
     switch (key) {
+    case keyboard::KeyCode::OemMinus: return VK_OEM_MINUS;
+    case keyboard::KeyCode::OemEquals: return VK_OEM_PLUS;
+    case keyboard::KeyCode::OemLeftBracket: return VK_OEM_4;
+    case keyboard::KeyCode::OemRightBracket: return VK_OEM_6;
+    case keyboard::KeyCode::OemBackslash: return VK_OEM_5;
+    case keyboard::KeyCode::OemSemicolon: return VK_OEM_1;
+    case keyboard::KeyCode::OemApostrophe: return VK_OEM_7;
+    case keyboard::KeyCode::OemComma: return VK_OEM_COMMA;
+    case keyboard::KeyCode::OemPeriod: return VK_OEM_PERIOD;
+    case keyboard::KeyCode::OemSlash: return VK_OEM_2;
+    case keyboard::KeyCode::CapsLock: return VK_CAPITAL;
+    case keyboard::KeyCode::Shift: return VK_SHIFT;
     case keyboard::KeyCode::Backspace: return VK_BACK;
     case keyboard::KeyCode::Space: return VK_SPACE;
     case keyboard::KeyCode::Enter: return VK_RETURN;
@@ -22,6 +37,8 @@ WORD toVirtualKey(keyboard::KeyCode key) {
 
 bool usesPhysicalScanCode(WORD virtualKey) {
     return (virtualKey >= 'A' && virtualKey <= 'Z') ||
+           (virtualKey >= '0' && virtualKey <= '9') ||
+           (virtualKey >= VK_OEM_1 && virtualKey <= VK_OEM_7) ||
            virtualKey == VK_BACK || virtualKey == VK_SPACE || virtualKey == VK_RETURN;
 }
 

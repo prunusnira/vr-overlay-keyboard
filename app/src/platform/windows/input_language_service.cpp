@@ -14,6 +14,25 @@ std::string languageId(std::uintptr_t layout) {
     return value.str();
 }
 
+keyboard::InputLanguageKind languageKind(HKL layout) {
+    const LANGID language = LOWORD(reinterpret_cast<ULONG_PTR>(layout));
+    switch (PRIMARYLANGID(language)) {
+    case LANG_KOREAN: return keyboard::InputLanguageKind::Korean;
+    case LANG_JAPANESE: return keyboard::InputLanguageKind::Japanese;
+    case LANG_ENGLISH: return keyboard::InputLanguageKind::English;
+    default: return keyboard::InputLanguageKind::Other;
+    }
+}
+
+keyboard::InputLanguageKind languageKind(keyboard::KeyboardLanguage language) {
+    switch (language) {
+    case keyboard::KeyboardLanguage::Korean: return keyboard::InputLanguageKind::Korean;
+    case keyboard::KeyboardLanguage::Japanese: return keyboard::InputLanguageKind::Japanese;
+    case keyboard::KeyboardLanguage::English: return keyboard::InputLanguageKind::English;
+    }
+    return keyboard::InputLanguageKind::Other;
+}
+
 std::string localizedLanguageName(HKL layout) {
     const LANGID language = LOWORD(reinterpret_cast<ULONG_PTR>(layout));
     const LCID locale = MAKELCID(language, SORT_DEFAULT);
@@ -33,7 +52,7 @@ std::string localizedLanguageName(HKL layout) {
 }
 
 std::vector<keyboard::InputLanguage> WindowsInputLanguageService::loadedLanguages() {
-    // 현재 스레드에 로드된 키보드 레이아웃을 열거하고, UI에는 OS 현지화 이름을 보여준다.
+    // Windows에 등록된 입력 로캘을 열거하고, UI에는 OS 현지화 이름을 보여준다.
     m_layouts.clear();
     const int count = GetKeyboardLayoutList(0, nullptr);
     if (count <= 0) {
@@ -58,28 +77,53 @@ std::vector<keyboard::InputLanguage> WindowsInputLanguageService::loadedLanguage
         const std::uintptr_t rawLayout = reinterpret_cast<std::uintptr_t>(layout);
         const std::string id = languageId(rawLayout);
         m_layouts.emplace(id, rawLayout);
-        languages.push_back({id, localizedLanguageName(layout), layout == current});
+        languages.push_back({id, localizedLanguageName(layout), layout == current, languageKind(layout)});
     }
     return languages;
 }
 
-bool WindowsInputLanguageService::activate(const std::string &id, std::string *error) {
-    const auto found = m_layouts.find(id);
+keyboard::InputLanguageActivationResult WindowsInputLanguageService::activate(
+    keyboard::KeyboardLanguage language, std::string *error) {
+    if (language == keyboard::KeyboardLanguage::English) {
+        if (error) {
+            *error = "English input mode keeps the current Windows input language.";
+        }
+        return keyboard::InputLanguageActivationResult::Failed;
+    }
+
+    const std::vector<keyboard::InputLanguage> languages = loadedLanguages();
+    const keyboard::InputLanguageKind requestedKind = languageKind(language);
+    const auto selected = std::find_if(languages.begin(), languages.end(), [requestedKind](const auto &entry) {
+        return entry.kind == requestedKind && entry.active;
+    });
+    const auto fallback = std::find_if(languages.begin(), languages.end(), [requestedKind](const auto &entry) {
+        return entry.kind == requestedKind;
+    });
+    const auto choice = selected != languages.end() ? selected : fallback;
+    if (choice == languages.end()) {
+        if (error) {
+            *error = language == keyboard::KeyboardLanguage::Korean
+                ? "The Korean Windows input method is not installed."
+                : "The Japanese Windows input method is not installed.";
+        }
+        return keyboard::InputLanguageActivationResult::NotInstalled;
+    }
+
+    // 화면에는 내부 ID만 전달하고 실제 HKL 값은 이 서비스 안에서만 보관한다.
+    const auto found = m_layouts.find(choice->id);
     if (found == m_layouts.end()) {
         if (error) {
             *error = "The selected Windows input language is no longer available.";
         }
-        return false;
+        return keyboard::InputLanguageActivationResult::Failed;
     }
-
-    // 화면에는 내부 ID만 전달하고, 실제 HKL 값은 이 서비스 안에서만 보관한다.
     const HKL layout = reinterpret_cast<HKL>(found->second);
     if (!ActivateKeyboardLayout(layout, 0)) {
         if (error) {
             *error = "Windows could not activate the selected input language (error " +
                      std::to_string(GetLastError()) + ").";
         }
-        return false;
+        return keyboard::InputLanguageActivationResult::Failed;
     }
-    return true;
+    return keyboard::InputLanguageActivationResult::Activated;
 }

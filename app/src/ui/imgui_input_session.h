@@ -18,11 +18,13 @@ public:
     void endFrame();
     EditorInteraction drawEditor(const char *label, std::string &text,
                                  const ImVec2 &size, bool requestFocus);
-    bool button(const char *label, const ImVec2 &size, bool selected = false);
+    bool button(const char *label, const ImVec2 &size, bool selected = false, bool enabled = true);
     bool sliderFloat(const char *label, const ImVec2 &size, float &value,
                      float minimum, float maximum, const char *format);
     bool horizontalScrollbar(const char *label, const ImVec2 &size,
                              float maxScroll, float visibleWidth, float &scroll);
+    bool verticalScrollbar(const char *label, const ImVec2 &size,
+                           float maxScroll, float visibleHeight, float &scroll);
     void clearEditor(std::string &text);
     bool isVirtualControlAt(int x, int y) const;
 

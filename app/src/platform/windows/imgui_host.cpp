@@ -21,7 +21,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window,
 namespace {
 constexpr wchar_t kWindowClassName[] = L"VrOverlayKeyboardImGuiWindow";
 constexpr int kWindowWidth = 1024;
-constexpr int kWindowHeight = 1024;
+constexpr int kWindowHeight = 640;
 constexpr int kWglContextMajorVersion = 0x2091;
 constexpr int kWglContextMinorVersion = 0x2092;
 

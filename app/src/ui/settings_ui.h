@@ -11,4 +11,5 @@ public:
 private:
     keyboard::KeyboardActions &m_actions;
     ImGuiInputSession &m_inputSession;
+    float m_scrollY = 0.0f;
 };

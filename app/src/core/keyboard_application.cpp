@@ -1,17 +1,20 @@
 #include "keyboard_application.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace keyboard {
 
 KeyboardApplication::KeyboardApplication(OverlayControlPort &overlay,
                                          InputLanguagePort &languages,
+                                         ImeModePort &imeModes,
                                          VirtualKeyPort &virtualKeys,
                                          CandidateSelectionPort &candidates,
                                          ChatboxPort &chatbox,
                                          SettingsPort &settings)
     : m_overlay(overlay),
       m_languages(languages),
+      m_imeModes(imeModes),
       m_virtualKeys(virtualKeys),
       m_candidates(candidates),
       m_chatbox(chatbox),
@@ -44,6 +47,7 @@ void KeyboardApplication::refresh() {
     // 화면에 오래된 상태가 남지 않도록 외부 어댑터의 현재값을 다시 읽는다.
     m_state.overlayVisible = m_overlay.isVisible();
     m_state.inputLanguages = m_languages.loadedLanguages();
+    m_state.imeMode = m_imeModes.currentMode();
     publish();
 }
 
@@ -146,15 +150,45 @@ bool KeyboardApplication::sendKey(KeyCode key, bool withShift) {
     return true;
 }
 
-bool KeyboardApplication::activateInputLanguage(const std::string &languageId) {
-    std::string error;
-    if (!m_languages.activate(languageId, &error)) {
-        setFailure(error);
-        return false;
+InputLanguageActivationResult KeyboardApplication::selectKeyboardLanguage(
+    KeyboardLanguage language, std::string *errorOut) {
+    std::string failure;
+    if (language != KeyboardLanguage::English) {
+        const InputLanguageActivationResult activation = m_languages.activate(language, &failure);
+        if (activation != InputLanguageActivationResult::Activated) {
+            if (errorOut) {
+                *errorOut = failure;
+            }
+            setFailure(failure);
+            return activation;
+        }
+    } else {
+        m_state.inputLanguages = m_languages.loadedLanguages();
+        const auto active = std::find_if(m_state.inputLanguages.begin(),
+                                         m_state.inputLanguages.end(),
+                                         [](const InputLanguage &entry) { return entry.active; });
+        if (active != m_state.inputLanguages.end() &&
+            active->kind == InputLanguageKind::English) {
+            m_state.status = "English input mode selected.";
+            refresh();
+            return InputLanguageActivationResult::Activated;
+        }
     }
-    m_state.status = "Input language changed.";
+
+    if (!m_imeModes.setMode(language, &failure)) {
+        if (errorOut) {
+            *errorOut = failure;
+        }
+        setFailure(failure);
+        return InputLanguageActivationResult::Failed;
+    }
+    m_state.status = language == KeyboardLanguage::Korean
+        ? "Korean input mode selected."
+        : language == KeyboardLanguage::Japanese
+            ? "Japanese Kana input mode selected."
+            : "English input mode selected.";
     refresh();
-    return true;
+    return InputLanguageActivationResult::Activated;
 }
 
 bool KeyboardApplication::selectCandidate(std::uint32_t index) {

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <iterator>
 #include <string>
 
@@ -24,9 +25,10 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
     }
 
     const ImGuiIO &io = ImGui::GetIO();
-    const float width = std::max(320.0f, std::min(430.0f, io.DisplaySize.x - 24.0f));
-    const float height = std::max(360.0f, std::min(820.0f, io.DisplaySize.y - 24.0f));
-    ImGui::SetNextWindowPos(ImVec2(std::max(12.0f, io.DisplaySize.x - width - 12.0f), 12.0f),
+    const float width = std::min(430.0f, std::max(1.0f, io.DisplaySize.x - 24.0f));
+    const float height = std::min(820.0f, std::max(1.0f, io.DisplaySize.y - 24.0f));
+    ImGui::SetNextWindowPos(ImVec2(std::max(0.0f, io.DisplaySize.x - width - 12.0f),
+                                   std::max(0.0f, (io.DisplaySize.y - height) * 0.5f)),
                             ImGuiCond_Appearing);
     ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Appearing);
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
@@ -52,6 +54,19 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
     }
     ImGui::Separator();
 
+    const float scrollRegionHeight = ImGui::GetContentRegionAvail().y;
+    float maxScrollY = 0.0f;
+    float visibleHeight = 1.0f;
+    if (ImGui::BeginTable("options-scroll-layout", 2,
+                          ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoPadOuterX,
+                          ImVec2(-FLT_MIN, scrollRegionHeight))) {
+        ImGui::TableSetupColumn("options-content", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("options-scrollbar", ImGuiTableColumnFlags_WidthFixed, 28.0f);
+        ImGui::TableNextColumn();
+        ImGui::SetNextWindowScroll(ImVec2(0.0f, m_scrollY));
+        ImGui::BeginChild("options-scroll-content", ImVec2(-FLT_MIN, -FLT_MIN),
+                          ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+
     ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::AppLanguage));
     constexpr keyboard::UiLanguage languages[] = {
         keyboard::UiLanguage::Korean,
@@ -71,23 +86,6 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
         }
         ImGui::PopID();
     }
-
-    ImGui::Spacing();
-    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerController));
-    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::LeftHand),
-                              ImVec2(140.0f, 36.0f),
-                              edited.pointerHand == keyboard::ControllerHand::Left)) {
-        edited.pointerHand = keyboard::ControllerHand::Left;
-        settingsChanged = true;
-    }
-    ImGui::SameLine();
-    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::RightHand),
-                              ImVec2(140.0f, 36.0f),
-                              edited.pointerHand == keyboard::ControllerHand::Right)) {
-        edited.pointerHand = keyboard::ControllerHand::Right;
-        settingsChanged = true;
-    }
-    ImGui::TextWrapped("%s", localized(language, keyboard::ui_text::TextId::ControllerHandHint));
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -152,9 +150,17 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
     ImGui::Text("%s: %.1f s",
                 localized(language, keyboard::ui_text::TextId::HoldDuration),
                 static_cast<float>(edited.summonHoldMilliseconds) / 1000.0f);
+    float holdMilliseconds = static_cast<float>(edited.summonHoldMilliseconds);
     ImGui::SameLine();
     if (m_inputSession.button("−", ImVec2(42.0f, 34.0f)) && edited.summonHoldMilliseconds >= 100) {
         edited.summonHoldMilliseconds -= 100;
+        holdMilliseconds = static_cast<float>(edited.summonHoldMilliseconds);
+        settingsChanged = true;
+    }
+    ImGui::SameLine();
+    if (m_inputSession.sliderFloat("##summon-hold-duration", ImVec2(-50.0f, 34.0f),
+                                   holdMilliseconds, 0.0f, 3000.0f, "%.0f ms")) {
+        edited.summonHoldMilliseconds = static_cast<std::uint32_t>(std::lround(holdMilliseconds));
         settingsChanged = true;
     }
     ImGui::SameLine();
@@ -163,6 +169,17 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
         settingsChanged = true;
     }
     ImGui::TextWrapped("%s", localized(language, keyboard::ui_text::TextId::HoldRange));
+
+        maxScrollY = ImGui::GetScrollMaxY();
+        visibleHeight = std::max(1.0f,
+            ImGui::GetWindowHeight() - ImGui::GetStyle().WindowPadding.y * 2.0f);
+        m_scrollY = ImGui::GetScrollY();
+        ImGui::EndChild();
+        ImGui::TableNextColumn();
+        m_inputSession.verticalScrollbar("##options-scrollbar", ImVec2(-FLT_MIN, -FLT_MIN),
+                                        maxScrollY, visibleHeight, m_scrollY);
+        ImGui::EndTable();
+    }
 
     ImGui::End();
     if (settingsChanged) {

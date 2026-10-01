@@ -1,5 +1,6 @@
 #include "keyboard_ui.h"
 
+#include "../core/keyboard_layout.h"
 #include "ui_text_catalog.h"
 
 #include <imgui.h>
@@ -14,13 +15,8 @@
 namespace {
 constexpr float kFontSize = 18.0f;
 constexpr float kKeyHeight = 42.0f;
-constexpr float kKeyWidth = 70.0f;
-constexpr float kImePreviewHeight = 96.0f;
-
-keyboard::KeyCode letterKey(char letter) {
-    return static_cast<keyboard::KeyCode>(
-        static_cast<int>(keyboard::KeyCode::A) + static_cast<int>(letter - 'A'));
-}
+constexpr float kKeyWidth = 54.0f;
+constexpr float kImePreviewHeight = 80.0f;
 
 std::string candidateSignature(const keyboard::CandidateSnapshot &snapshot) {
     std::ostringstream signature;
@@ -42,15 +38,72 @@ int mouseButtonIndex(keyboard::PointerButton button) {
 const char *localized(keyboard::UiLanguage language, keyboard::ui_text::TextId id) {
     return keyboard::ui_text::text(language, id);
 }
+
+const keyboard::InputLanguage *activeInputLanguage(const keyboard::AppUiState &state) {
+    const auto found = std::find_if(state.inputLanguages.begin(), state.inputLanguages.end(),
+        [](const keyboard::InputLanguage &language) { return language.active; });
+    return found == state.inputLanguages.end() ? nullptr : &*found;
+}
+
+bool languageButtonIsActive(const keyboard::AppUiState &state, keyboard::KeyboardLanguage target) {
+    const keyboard::InputLanguage *active = activeInputLanguage(state);
+    if (!active) {
+        return false;
+    }
+    if (target == keyboard::KeyboardLanguage::English) {
+        if (active->kind == keyboard::InputLanguageKind::English) {
+            return true;
+        }
+        if (state.imeMode.available && active->kind != keyboard::InputLanguageKind::Korean &&
+            active->kind != keyboard::InputLanguageKind::Japanese) {
+            return !state.imeMode.native && !state.imeMode.fullShape;
+        }
+        if ((active->kind == keyboard::InputLanguageKind::Korean ||
+             active->kind == keyboard::InputLanguageKind::Japanese) && state.imeMode.available) {
+            return !state.imeMode.native &&
+                (active->kind != keyboard::InputLanguageKind::Japanese || !state.imeMode.fullShape);
+        }
+        return false;
+    }
+    const keyboard::InputLanguageKind requested = target == keyboard::KeyboardLanguage::Korean
+        ? keyboard::InputLanguageKind::Korean
+        : keyboard::InputLanguageKind::Japanese;
+    if (active->kind != requested) {
+        return false;
+    }
+    if (!state.imeMode.available) {
+        return true;
+    }
+    return state.imeMode.native &&
+        (target != keyboard::KeyboardLanguage::Japanese || !state.imeMode.katakana);
+}
+
+void drawKeyLegend(const keyboard::KeyboardKeyDefinition &key,
+                   keyboard::KeyboardLayoutKind layout,
+                   const ImVec2 &minimum,
+                   const ImVec2 &maximum) {
+    const char *primary = keyboard::primaryKeyLabel(key, layout);
+    const char *secondary = keyboard::secondaryKeyLabel(key, layout);
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+    if (secondary && *secondary) {
+        drawList->AddText(ImGui::GetFont(), 13.0f,
+                          ImVec2(minimum.x + 5.0f, minimum.y + 3.0f), textColor, secondary);
+    }
+    const ImVec2 labelSize = ImGui::CalcTextSize(primary);
+    const ImVec2 labelPosition((minimum.x + maximum.x - labelSize.x) * 0.5f,
+                               (minimum.y + maximum.y - labelSize.y) * 0.5f + 2.0f);
+    drawList->AddText(labelPosition, textColor, primary);
+}
 }
 
 KeyboardUi::KeyboardUi(keyboard::KeyboardActions &actions)
     : m_actions(actions), m_settingsUi(actions, m_inputSession) {
     addImeFonts();
     ImGuiStyle &style = ImGui::GetStyle();
-    style.WindowPadding = ImVec2(18.0f, 14.0f);
-    style.FramePadding = ImVec2(10.0f, 8.0f);
-    style.ItemSpacing = ImVec2(8.0f, 7.0f);
+    style.WindowPadding = ImVec2(12.0f, 8.0f);
+    style.FramePadding = ImVec2(8.0f, 5.0f);
+    style.ItemSpacing = ImVec2(6.0f, 4.0f);
     style.WindowRounding = 0.0f;
     style.FrameRounding = 6.0f;
     style.ChildRounding = 6.0f;
@@ -91,69 +144,14 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
 
     ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::WindowTitle));
     ImGui::SameLine();
-    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::OpenOptions),
-                              ImVec2(130.0f, 34.0f))) {
-        // 열기 버튼은 반복 입력이나 중복 Release에도 닫히지 않도록 멱등 동작으로 둔다.
-        m_actions.setOptionsOpen(true);
-    }
-    ImGui::TextWrapped("%s", localized(language, keyboard::ui_text::TextId::Intro));
-    ImGui::Separator();
-
-    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::ChatboxText));
-    const ImGuiInputSession::EditorInteraction editor = m_inputSession.drawEditor(
-        "##chatbox-text", m_text, ImVec2(-1.0f, 90.0f),
-        applicationIsForeground || m_focusEditorNextFrame);
-    m_focusEditorNextFrame = false;
-    // VR 포인터 입력은 OS 마우스 포커스를 바꾸지 않으므로, 편집창을 누를 때 실제 창도 전경으로 요청한다.
-    if (editor.clicked) {
-        requestEditorFocus();
-    }
-    m_editorFocusArmed = editor.active;
-    if (m_submitAfterComposition && !state.composition.active && editor.active) {
-        // IME 확정 문자가 편집창 입력 큐에 반영된 뒤 OSC로 보낸다. 조합 중 이전 문장을 보내지 않는다.
-        m_submitAfterComposition = false;
-        if (m_actions.submitChatboxText(m_text)) {
-            appendLog("OSC request sent to 127.0.0.1:9000: /chatbox/input (send=false).");
-        }
-    }
-
-    ImGui::Spacing();
-    ImGui::BeginGroup();
-    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::FocusInput), ImVec2(150.0f, 42.0f))) {
-        requestEditorFocus();
-    }
-    ImGui::SameLine();
-    const bool overlayVisible = state.overlayVisible;
-    const char *toggleLabel = localized(language, overlayVisible
-        ? keyboard::ui_text::TextId::HideOverlay
-        : keyboard::ui_text::TextId::ShowOverlay);
-    if (m_inputSession.button(toggleLabel, ImVec2(210.0f, 42.0f))) {
-        overlayVisible ? m_actions.hideOverlay() : m_actions.showOverlay();
-    }
-    ImGui::SameLine();
-    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::ClearInput), ImVec2(150.0f, 42.0f))) {
-        m_submitAfterComposition = false;
-        if (m_compositionCancelCallback) {
-            m_compositionCancelCallback();
-        }
-        m_inputSession.clearEditor(m_text);
-        appendLog("Editor cleared.");
-    }
-    ImGui::SameLine();
-    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::FillChatbox), ImVec2(210.0f, 42.0f))) {
-        if (state.composition.active) {
-            // 변환 중이면 Enter를 IME에 보내고, 다음 프레임부터 조합 종료와 편집 버퍼 반영을 기다린다.
-            m_submitAfterComposition = m_editorFocusArmed &&
-                m_actions.sendKey(keyboard::KeyCode::Enter, false);
-        } else if (m_actions.submitChatboxText(m_text)) {
-            appendLog("OSC request sent to 127.0.0.1:9000: /chatbox/input (send=false).");
-        }
-    }
-    ImGui::EndGroup();
-
-    ImGui::Spacing();
+    constexpr const char *copyright = "(c) Studio Nira 2026";
+    const float copyrightWidth = ImGui::CalcTextSize(copyright).x;
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(),
+                                  ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - copyrightWidth));
+    ImGui::TextUnformatted(copyright);
     ImGui::TextWrapped("%s: %s", localized(language, keyboard::ui_text::TextId::Status), state.status.c_str());
-    ImGui::Text("%s: %s  |  %s: %s",
+    const keyboard::InputLanguage *activeLanguage = activeInputLanguage(state);
+    ImGui::Text("%s: %s  |  %s: %s  |  %s: %s",
                 localized(language, keyboard::ui_text::TextId::WindowsForeground),
                 localized(language, m_applicationIsForeground
                     ? keyboard::ui_text::TextId::ThisApp
@@ -161,17 +159,80 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
                 localized(language, keyboard::ui_text::TextId::EditorFocus),
                 localized(language, m_editorFocusArmed
                     ? keyboard::ui_text::TextId::Ready
-                    : keyboard::ui_text::TextId::NotSelected));
+                    : keyboard::ui_text::TextId::NotSelected),
+                localized(language, keyboard::ui_text::TextId::CurrentInputLanguage),
+                activeLanguage ? activeLanguage->label.c_str()
+                               : localized(language, keyboard::ui_text::TextId::Detecting));
 
-    ImGui::Spacing();
-    drawInputLanguages(state.inputLanguages, language);
-    drawCandidates(state.candidates, state.composition, language);
-    drawKeyboard(language);
+    drawMissingInputLanguagePopup(language);
 
-    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::InputDiagnostics),
-                              ImVec2(-FLT_MIN, 28.0f))) {
-        m_diagnosticsExpanded = !m_diagnosticsExpanded;
+    if (ImGui::BeginTable("chatbox-ime-row", 2,
+                          ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoPadOuterX)) {
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::ChatboxText));
+        ImGui::SameLine();
+        if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::FillChatbox),
+                                  ImVec2(180.0f, 30.0f))) {
+            if (state.composition.active) {
+                // 변환 중이면 Enter를 IME에 보내고, 조합 종료와 편집 버퍼 반영 뒤에 전송한다.
+                m_submitAfterComposition = m_editorFocusArmed &&
+                    m_actions.sendKey(keyboard::KeyCode::Enter, false);
+            } else if (m_actions.submitChatboxText(m_text)) {
+                appendLog("OSC request sent to 127.0.0.1:9000: /chatbox/input (send=false).");
+            }
+        }
+        const ImGuiInputSession::EditorInteraction editor = m_inputSession.drawEditor(
+            "##chatbox-text", m_text, ImVec2(-FLT_MIN, 64.0f),
+            applicationIsForeground || m_focusEditorNextFrame);
+        m_focusEditorNextFrame = false;
+        // VR 포인터 입력은 OS 포커스를 바꾸지 않으므로 편집창을 누를 때 실제 창도 전경으로 요청한다.
+        if (editor.clicked) {
+            requestEditorFocus();
+        }
+        m_editorFocusArmed = editor.active;
+        if (m_submitAfterComposition && !state.composition.active && editor.active) {
+            m_submitAfterComposition = false;
+            if (m_actions.submitChatboxText(m_text)) {
+                appendLog("OSC request sent to 127.0.0.1:9000: /chatbox/input (send=false).");
+            }
+        }
+        ImGui::TableNextColumn();
+        drawCandidates(state.candidates, state.composition, language);
+        ImGui::EndTable();
     }
+
+    if (ImGui::BeginTable("keyboard-toolbar", 2,
+                          ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoPadOuterX)) {
+        ImGui::TableSetupColumn("keyboard-actions", ImGuiTableColumnFlags_WidthStretch, 0.56f);
+        ImGui::TableSetupColumn("keyboard-languages", ImGuiTableColumnFlags_WidthStretch, 0.44f);
+        ImGui::TableNextColumn();
+        if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::FocusInput),
+                                  ImVec2(158.0f, 36.0f))) {
+            requestEditorFocus();
+        }
+        ImGui::SameLine();
+        const bool overlayVisible = state.overlayVisible;
+        const char *toggleLabel = localized(language, overlayVisible
+            ? keyboard::ui_text::TextId::HideOverlay
+            : keyboard::ui_text::TextId::ShowOverlay);
+        if (m_inputSession.button(toggleLabel, ImVec2(210.0f, 36.0f))) {
+            overlayVisible ? m_actions.hideOverlay() : m_actions.showOverlay();
+        }
+        ImGui::SameLine();
+        if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::ClearInput),
+                                  ImVec2(138.0f, 36.0f))) {
+            m_submitAfterComposition = false;
+            if (m_compositionCancelCallback) {
+                m_compositionCancelCallback();
+            }
+            m_inputSession.clearEditor(m_text);
+            appendLog("Editor cleared.");
+        }
+        ImGui::TableNextColumn();
+        drawInputLanguages(state, language);
+        ImGui::EndTable();
+    }
+    drawKeyboard(state, language);
     if (m_diagnosticsExpanded) {
         ImGui::BeginChild("input-diagnostics", ImVec2(0.0f, 95.0f), ImGuiChildFlags_Borders,
                           ImGuiWindowFlags_NoScrollbar);
@@ -302,45 +363,65 @@ void KeyboardUi::appendLog(std::string message) {
     }
 }
 
-void KeyboardUi::drawInputLanguages(const std::vector<keyboard::InputLanguage> &languages,
-                                   keyboard::UiLanguage uiLanguage) {
-    ImGui::TextUnformatted(localized(uiLanguage, keyboard::ui_text::TextId::WindowsInputLanguage));
-    const auto activeLanguage = std::find_if(languages.begin(), languages.end(), [](const keyboard::InputLanguage &language) {
-        return language.active;
-    });
-    if (activeLanguage == languages.end()) {
-        ImGui::Text("%s: %s",
-                    localized(uiLanguage, keyboard::ui_text::TextId::CurrentInputLanguage),
-                    localized(uiLanguage, keyboard::ui_text::TextId::Detecting));
-    } else {
-        ImGui::Text("%s: %s",
-                    localized(uiLanguage, keyboard::ui_text::TextId::CurrentInputLanguage),
-                    activeLanguage->label.c_str());
-    }
-
+void KeyboardUi::drawInputLanguages(const keyboard::AppUiState &state,
+                                    keyboard::UiLanguage uiLanguage) {
+    const std::vector<keyboard::InputLanguage> &languages = state.inputLanguages;
     if (languages.empty()) {
-        ImGui::TextWrapped("%s", localized(uiLanguage, keyboard::ui_text::TextId::NoInputLanguages));
-        return;
+        ImGui::TextDisabled("%s", localized(uiLanguage, keyboard::ui_text::TextId::NoInputLanguages));
     }
     if (!ImGui::BeginTable("input-languages", 3, ImGuiTableFlags_SizingStretchSame)) {
         return;
     }
-    for (std::size_t index = 0; index < languages.size(); ++index) {
-        const keyboard::InputLanguage &language = languages[index];
+    struct LanguageButton {
+        keyboard::KeyboardLanguage language;
+        keyboard::ui_text::TextId text;
+    };
+    constexpr LanguageButton buttons[] = {
+        {keyboard::KeyboardLanguage::Korean, keyboard::ui_text::TextId::KeyboardLanguageKorean},
+        {keyboard::KeyboardLanguage::Japanese, keyboard::ui_text::TextId::KeyboardLanguageJapanese},
+        {keyboard::KeyboardLanguage::English, keyboard::ui_text::TextId::KeyboardLanguageEnglish},
+    };
+    for (std::size_t index = 0; index < std::size(buttons); ++index) {
         ImGui::TableNextColumn();
         ImGui::PushID(static_cast<int>(index));
-        if (language.active) {
+        const bool active = languageButtonIsActive(state, buttons[index].language);
+        if (active) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.34f, 0.59f, 1.0f));
         }
-        if (m_inputSession.button(language.label.c_str(), ImVec2(-FLT_MIN, 36.0f))) {
-            m_actions.activateInputLanguage(language.id);
+        if (m_inputSession.button(localized(uiLanguage, buttons[index].text), ImVec2(-FLT_MIN, 36.0f), active)) {
+            std::string error;
+            const keyboard::InputLanguageActivationResult result =
+                m_actions.selectKeyboardLanguage(buttons[index].language, &error);
+            if (result == keyboard::InputLanguageActivationResult::NotInstalled) {
+                m_openMissingInputLanguagePopup = true;
+            } else if (result == keyboard::InputLanguageActivationResult::Failed) {
+                appendLog(error.empty() ? "Could not change the Windows input mode." : error);
+            }
         }
-        if (language.active) {
+        if (active) {
             ImGui::PopStyleColor();
         }
         ImGui::PopID();
     }
     ImGui::EndTable();
+}
+
+void KeyboardUi::drawMissingInputLanguagePopup(keyboard::UiLanguage uiLanguage) {
+    const std::string popupTitle = std::string(localized(
+        uiLanguage, keyboard::ui_text::TextId::MissingImeTitle)) + "###missing-input-language";
+    if (m_openMissingInputLanguagePopup) {
+        ImGui::OpenPopup(popupTitle.c_str());
+        m_openMissingInputLanguagePopup = false;
+    }
+    if (!ImGui::BeginPopupModal(popupTitle.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    ImGui::TextWrapped("%s", localized(uiLanguage, keyboard::ui_text::TextId::MissingImeBody));
+    ImGui::Spacing();
+    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Close), ImVec2(120.0f, 36.0f))) {
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
@@ -354,17 +435,18 @@ void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
                       " entries, selected " + std::to_string(snapshot.selectedIndex) + ".");
         }
     }
-    ImGui::Separator();
     ImGui::TextUnformatted(localized(uiLanguage, keyboard::ui_text::TextId::ImePreviewCandidates));
     // 후보가 나타나거나 사라져도 키보드 위치가 바뀌지 않도록 고정 높이를 항상 확보한다.
     if (m_candidateScrollRequested) {
         ImGui::SetNextWindowScroll(ImVec2(m_candidateScrollX, 0.0f));
         m_candidateScrollRequested = false;
     }
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 4.0f));
     ImGui::BeginChild("ime-candidates",
                       ImVec2(0.0f, kImePreviewHeight),
                       ImGuiChildFlags_Borders,
                       ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollbar);
+    ImGui::PopStyleVar();
     if (composition.active) {
         // 일본어 단어를 변환하는 동안의 문자열은 고정 영역에 표시하고 확정 편집 문자열과 섞지 않는다.
         ImGui::TextUnformatted(composition.preedit.empty()
@@ -373,7 +455,6 @@ void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
     } else {
         ImGui::TextDisabled("%s", localized(uiLanguage, keyboard::ui_text::TextId::ImeCompositionPreview));
     }
-    ImGui::Separator();
     if (!snapshot.active || snapshot.candidates.empty()) {
         ImGui::TextDisabled("%s", localized(uiLanguage, keyboard::ui_text::TextId::ImeCandidatesAppear));
     }
@@ -397,69 +478,112 @@ void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
     m_candidateScrollX = ImGui::GetScrollX();
     ImGui::EndChild();
     m_candidateScrollRequested = m_inputSession.horizontalScrollbar(
-        "##candidate-scroll", ImVec2(-FLT_MIN, 14.0f), maxScroll, visibleWidth, m_candidateScrollX);
+        "##candidate-scroll", ImVec2(-FLT_MIN, 12.0f), maxScroll, visibleWidth, m_candidateScrollX);
 }
 
-void KeyboardUi::drawKeyboard(keyboard::UiLanguage uiLanguage) {
-    ImGui::Separator();
-    ImGui::TextUnformatted(localized(uiLanguage, keyboard::ui_text::TextId::Keyboard));
-    ImGui::TextWrapped("%s", localized(uiLanguage, keyboard::ui_text::TextId::ImeValidationWarning));
-
-    const char *rows[] = {"QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
-    for (std::size_t row = 0; row < std::size(rows); ++row) {
-        const std::string keys(rows[row]);
-        const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        const float totalWidth = static_cast<float>(keys.size()) * kKeyWidth +
-            static_cast<float>(keys.size() - 1) * spacing;
-        const float availableWidth = ImGui::GetContentRegionAvail().x;
-        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), (availableWidth - totalWidth) * 0.5f));
-        for (std::size_t column = 0; column < keys.size(); ++column) {
-            ImGui::PushID(static_cast<int>(row * 16 + column));
-            const char label[] = {keys[column], '\0'};
-            if (m_inputSession.button(label, ImVec2(kKeyWidth, kKeyHeight))) {
-                sendKey(letterKey(keys[column]), m_shiftForNextKey);
-                if (m_shiftForNextKey) {
+void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLanguage uiLanguage) {
+    const keyboard::InputLanguage *active = activeInputLanguage(state);
+    const keyboard::InputLanguageKind language = active
+        ? active->kind
+        : keyboard::InputLanguageKind::Other;
+    const keyboard::KeyboardLayoutKind layout = keyboard::keyboardLayoutFor(language, state.imeMode);
+    const std::vector<keyboard::KeyboardRow> &rows = keyboard::keyboardRows();
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float availableWidth = ImGui::GetContentRegionAvail().x;
+    for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
+        const keyboard::KeyboardRow &row = rows[rowIndex];
+        const bool bottomRow = rowIndex + 1 == rows.size();
+        const float optionsWidth = bottomRow ? 116.0f : 0.0f;
+        const float diagnosticsWidth = bottomRow ? 156.0f : 0.0f;
+        float widthUnits = 0.0f;
+        for (const keyboard::KeyboardKeyDefinition &key : row) {
+            widthUnits += key.widthUnits;
+        }
+        const float spacingCount = static_cast<float>(row.size() - 1 + (bottomRow ? 2 : 0));
+        const float totalSpacing = spacing * spacingCount;
+        const float controlWidth = optionsWidth + diagnosticsWidth;
+        const float keyWidth = std::min(kKeyWidth,
+            std::max(1.0f, (availableWidth - controlWidth - totalSpacing) / widthUnits));
+        const float totalWidth = keyWidth * widthUnits + totalSpacing + controlWidth;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (availableWidth - totalWidth) * 0.5f));
+        if (bottomRow) {
+            if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::OpenOptions),
+                                      ImVec2(optionsWidth, kKeyHeight))) {
+                m_actions.setOptionsOpen(true);
+            }
+            ImGui::SameLine(0.0f, spacing);
+        }
+        for (std::size_t column = 0; column < row.size(); ++column) {
+            const keyboard::KeyboardKeyDefinition &key = row[column];
+            ImGui::PushID(static_cast<int>(rowIndex));
+            ImGui::PushID(static_cast<int>(column));
+            const ImVec2 size(keyWidth * key.widthUnits, kKeyHeight);
+            bool activated = false;
+            switch (key.kind) {
+            case keyboard::KeyboardKeyKind::Character: {
+                activated = m_inputSession.button("##keyboard-key", size);
+                const ImVec2 minimum = ImGui::GetItemRectMin();
+                const ImVec2 maximum = ImGui::GetItemRectMax();
+                drawKeyLegend(key, layout, minimum, maximum);
+                if (activated) {
+                    sendKey(key.code, m_shiftForNextKey);
                     m_shiftForNextKey = false;
                 }
+                break;
+            }
+            case keyboard::KeyboardKeyKind::Backspace:
+                if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Backspace), size)) {
+                    sendKey(key.code);
+                }
+                break;
+            case keyboard::KeyboardKeyKind::CapsLock:
+                if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::CapsLock), size)) {
+                    sendKey(key.code);
+                }
+                break;
+            case keyboard::KeyboardKeyKind::Enter:
+                if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Enter), size)) {
+                    sendKey(key.code);
+                }
+                break;
+            case keyboard::KeyboardKeyKind::Shift:
+                if (m_inputSession.button(localized(uiLanguage, m_shiftForNextKey
+                        ? keyboard::ui_text::TextId::ShiftOn
+                        : keyboard::ui_text::TextId::LeftShift), size, m_shiftForNextKey)) {
+                    m_shiftForNextKey = !m_shiftForNextKey;
+                }
+                break;
+            case keyboard::KeyboardKeyKind::KoreanMode:
+                if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::KoreanMode), size,
+                                          false, language != keyboard::InputLanguageKind::Japanese)) {
+                    sendKey(key.code);
+                }
+                break;
+            case keyboard::KeyboardKeyKind::Space:
+                if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Space), size)) {
+                    sendKey(key.code);
+                }
+                break;
+            case keyboard::KeyboardKeyKind::HiraganaMode:
+                if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Hiragana), size,
+                                          false, language != keyboard::InputLanguageKind::Korean)) {
+                    sendKey(key.code);
+                }
+                break;
             }
             ImGui::PopID();
-            if (column + 1 < keys.size()) {
+            ImGui::PopID();
+            if (column + 1 < row.size()) {
                 ImGui::SameLine(0.0f, spacing);
             }
         }
-    }
-
-    ImGui::Spacing();
-    const char *shiftLabel = localized(uiLanguage, m_shiftForNextKey
-        ? keyboard::ui_text::TextId::ShiftOn
-        : keyboard::ui_text::TextId::Shift);
-    if (m_inputSession.button(shiftLabel, ImVec2(120.0f, kKeyHeight))) {
-        m_shiftForNextKey = !m_shiftForNextKey;
-    }
-    ImGui::SameLine();
-    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Backspace), ImVec2(150.0f, kKeyHeight))) {
-        sendKey(keyboard::KeyCode::Backspace);
-    }
-    ImGui::SameLine();
-    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::KoreanMode), ImVec2(130.0f, kKeyHeight))) {
-        sendKey(keyboard::KeyCode::HangulMode);
-    }
-    ImGui::SameLine();
-    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Space), ImVec2(170.0f, kKeyHeight))) {
-        sendKey(keyboard::KeyCode::Space);
-    }
-    ImGui::SameLine();
-    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Enter), ImVec2(120.0f, kKeyHeight))) {
-        sendKey(keyboard::KeyCode::Enter);
-    }
-    ImGui::SameLine();
-    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Hiragana), ImVec2(90.0f, kKeyHeight))) {
-        sendKey(keyboard::KeyCode::JapaneseHiraganaMode);
-        appendLog("Requested Japanese Hiragana mode.");
-    }
-    ImGui::SameLine();
-    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Kanji), ImVec2(90.0f, kKeyHeight))) {
-        sendKey(keyboard::KeyCode::JapaneseKanjiMode);
+        if (bottomRow) {
+            ImGui::SameLine(0.0f, spacing);
+            if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::InputDiagnostics),
+                                      ImVec2(diagnosticsWidth, kKeyHeight))) {
+                m_diagnosticsExpanded = !m_diagnosticsExpanded;
+            }
+        }
     }
 }
 

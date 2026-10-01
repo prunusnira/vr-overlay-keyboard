@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 
-class TsfInput final : public keyboard::CandidateSelectionPort {
+class TsfInput final : public keyboard::CandidateSelectionPort, public keyboard::ImeModePort {
 public:
     using CandidateCallback = std::function<void(const keyboard::CandidateSnapshot &)>;
 
@@ -20,6 +20,8 @@ public:
     bool initialize(std::string *error);
     void shutdown();
     bool selectCandidate(std::uint32_t index, std::string *error) override;
+    keyboard::ImeModeSnapshot currentMode() const override;
+    bool setMode(keyboard::KeyboardLanguage language, std::string *error) override;
 
 private:
     struct Impl;

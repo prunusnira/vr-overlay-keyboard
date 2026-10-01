@@ -82,25 +82,6 @@ bool parseLanguage(std::string_view name, keyboard::UiLanguage *language) {
     return true;
 }
 
-const char *handName(keyboard::ControllerHand hand) {
-    switch (hand) {
-    case keyboard::ControllerHand::Left: return "left";
-    case keyboard::ControllerHand::Right: return "right";
-    }
-    return "";
-}
-
-bool parseHand(std::string_view name, keyboard::ControllerHand *hand) {
-    if (name == "left") {
-        *hand = keyboard::ControllerHand::Left;
-    } else if (name == "right") {
-        *hand = keyboard::ControllerHand::Right;
-    } else {
-        return false;
-    }
-    return true;
-}
-
 const char *buttonName(keyboard::ControllerButton button) {
     for (const ButtonSettingName &entry : kButtonNames) {
         if (entry.button == button) {
@@ -188,7 +169,6 @@ bool WindowsSettingsStore::load(keyboard::AppSettings *settings, std::string *er
     bool foundLanguage = false;
     bool foundButtons = false;
     bool foundHold = false;
-    bool validPointerHand = true;
     bool validPointerOffsets = true;
     std::string line;
     while (std::getline(input, line)) {
@@ -232,12 +212,6 @@ bool WindowsSettingsStore::load(keyboard::AppSettings *settings, std::string *er
             if (!foundHold) {
                 break;
             }
-        } else if (key == "pointer_hand") {
-            // 이전 설정 파일에는 이 항목이 없으므로 오른손 기본값을 그대로 유지한다.
-            validPointerHand = parseHand(value, &loaded.pointerHand);
-            if (!validPointerHand) {
-                break;
-            }
         } else if (key == "pointer_offset_x_percent") {
             validPointerOffsets = parseFloat(value, &loaded.pointerOffsetXPercent);
             if (!validPointerOffsets) {
@@ -252,7 +226,7 @@ bool WindowsSettingsStore::load(keyboard::AppSettings *settings, std::string *er
     }
 
     std::string validationError;
-    if (!input.eof() || !foundLanguage || !foundButtons || !foundHold || !validPointerHand || !validPointerOffsets ||
+    if (!input.eof() || !foundLanguage || !foundButtons || !foundHold || !validPointerOffsets ||
         !keyboard::validateAppSettings(loaded, &validationError)) {
         setError(error, validationError.empty() ? "The settings file is incomplete or invalid." : validationError);
         return false;
@@ -286,7 +260,6 @@ bool WindowsSettingsStore::save(const keyboard::AppSettings &settings, std::stri
             return false;
         }
         output << "language=" << languageName(settings.uiLanguage) << '\n';
-        output << "pointer_hand=" << handName(settings.pointerHand) << '\n';
         output << "pointer_offset_x_percent=" << settings.pointerOffsetXPercent << '\n';
         output << "pointer_offset_y_percent=" << settings.pointerOffsetYPercent << '\n';
         output << "summon_buttons=" << serializeButtons(settings.summonButtons) << '\n';

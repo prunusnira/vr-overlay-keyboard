@@ -35,6 +35,37 @@ enum class UiLanguage : std::uint8_t {
     English,
 };
 
+enum class InputLanguageKind : std::uint8_t {
+    Other,
+    Korean,
+    Japanese,
+    English,
+};
+
+enum class KeyboardLanguage : std::uint8_t {
+    Korean,
+    Japanese,
+    English,
+};
+
+enum class InputLanguageActivationResult : std::uint8_t {
+    Activated,
+    NotInstalled,
+    Failed,
+};
+
+struct ImeModeSnapshot {
+    bool available = false;
+    bool native = false;
+    bool fullShape = false;
+    bool katakana = false;
+};
+
+enum class KeyboardLayoutKind : std::uint8_t {
+    Qwerty,
+    KoreanDubeolsik,
+};
+
 // SteamVR 액션에 노출하는 기기 독립 논리 버튼이다. 실제 입력 경로는 사용자가 바인딩한다.
 enum class ControllerButton : std::uint8_t {
     LeftGrip,
@@ -78,8 +109,6 @@ struct ControllerButtonState {
 
 struct AppSettings {
     UiLanguage uiLanguage = UiLanguage::Korean;
-    // 포인터 조작과 그립 이동에 사용할 손을 사용자 옵션으로 고정한다.
-    ControllerHand pointerHand = ControllerHand::Right;
     // 포인터의 화면 크기 대비 보정량이다. 양수 X는 오른쪽, 양수 Y는 아래쪽이다.
     float pointerOffsetXPercent = 0.0f;
     float pointerOffsetYPercent = 2.4f;
@@ -131,6 +160,7 @@ struct InputLanguage {
     std::string id;
     std::string label;
     bool active = false;
+    InputLanguageKind kind = InputLanguageKind::Other;
 };
 
 struct CandidateSnapshot {
@@ -151,6 +181,19 @@ struct CompositionSnapshot {
 enum class KeyCode : std::uint8_t {
     A, B, C, D, E, F, G, H, I, J, K, L, M,
     N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+    Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9,
+    OemMinus,
+    OemEquals,
+    OemLeftBracket,
+    OemRightBracket,
+    OemBackslash,
+    OemSemicolon,
+    OemApostrophe,
+    OemComma,
+    OemPeriod,
+    OemSlash,
+    CapsLock,
+    Shift,
     Backspace,
     Space,
     Enter,
@@ -163,6 +206,7 @@ struct AppUiState {
     bool overlayVisible = false;
     bool optionsOpen = false;
     std::vector<InputLanguage> inputLanguages;
+    ImeModeSnapshot imeMode;
     std::vector<ControllerButtonState> controllerButtons;
     AppSettings settings;
     CandidateSnapshot candidates;
@@ -183,7 +227,15 @@ class InputLanguagePort {
 public:
     virtual ~InputLanguagePort() = default;
     virtual std::vector<InputLanguage> loadedLanguages() = 0;
-    virtual bool activate(const std::string &languageId, std::string *error) = 0;
+    virtual InputLanguageActivationResult activate(KeyboardLanguage language,
+                                                   std::string *error) = 0;
+};
+
+class ImeModePort {
+public:
+    virtual ~ImeModePort() = default;
+    virtual ImeModeSnapshot currentMode() const = 0;
+    virtual bool setMode(KeyboardLanguage language, std::string *error) = 0;
 };
 
 class VirtualKeyPort {
@@ -221,7 +273,8 @@ public:
     virtual bool setOptionsOpen(bool open) = 0;
     virtual bool applySettings(const AppSettings &settings) = 0;
     virtual bool sendKey(KeyCode key, bool withShift) = 0;
-    virtual bool activateInputLanguage(const std::string &languageId) = 0;
+    virtual InputLanguageActivationResult selectKeyboardLanguage(KeyboardLanguage language,
+                                                                  std::string *error) = 0;
     virtual bool selectCandidate(std::uint32_t index) = 0;
     virtual bool submitChatboxText(const std::string &utf8Text) = 0;
 };

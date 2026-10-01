@@ -56,6 +56,8 @@ target_link_libraries(dear_imgui PUBLIC OpenGL::GL dwmapi)
 add_library(app_core STATIC
     src/core/keyboard_application.cpp
     src/core/keyboard_application.h
+    src/core/keyboard_layout.cpp
+    src/core/keyboard_layout.h
     src/core/controller_summon_trigger.cpp
     src/core/controller_summon_trigger.h
     src/core/app_contracts.h
@@ -134,7 +136,7 @@ add_library(windows_tsf_input STATIC
     src/ime/tsf_input.cpp
     src/ime/tsf_input.h
 )
-target_link_libraries(windows_tsf_input PUBLIC app_core PRIVATE ole32 oleaut32 uuid)
+target_link_libraries(windows_tsf_input PUBLIC app_core PRIVATE ole32 oleaut32 uuid user32)
 
 add_library(chatbox_osc STATIC
     src/osc/osc_client.cpp

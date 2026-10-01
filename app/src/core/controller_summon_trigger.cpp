@@ -22,14 +22,6 @@ bool validateAppSettings(const AppSettings &settings, std::string *error) {
         return fail("Unknown application language.");
     }
 
-    switch (settings.pointerHand) {
-    case ControllerHand::Left:
-    case ControllerHand::Right:
-        break;
-    default:
-        return fail("Choose a supported controller hand.");
-    }
-
     if (!std::isfinite(settings.pointerOffsetXPercent) ||
         !std::isfinite(settings.pointerOffsetYPercent) ||
         settings.pointerOffsetXPercent < -10.0f || settings.pointerOffsetXPercent > 10.0f ||

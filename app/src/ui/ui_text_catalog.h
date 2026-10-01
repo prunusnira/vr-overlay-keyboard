@@ -58,6 +58,13 @@ enum class TextId {
     BindingsMissing,
     BindingsReady,
     BindingInstructions,
+    KeyboardLanguageKorean,
+    KeyboardLanguageJapanese,
+    KeyboardLanguageEnglish,
+    CapsLock,
+    LeftShift,
+    MissingImeTitle,
+    MissingImeBody,
     Count,
 };
 

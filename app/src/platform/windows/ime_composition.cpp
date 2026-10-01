@@ -51,22 +51,47 @@ bool WindowsImeComposition::processMessage(HWND window, UINT message, WPARAM wPa
     result = 0;
     switch (message) {
     case WM_IME_SETCONTEXT:
+        if (const HIMC context = ImmGetContext(window)) {
+            ImmReleaseContext(window, context);
+        } else {
+            // TSF 전용 입력기가 IMM 입력 컨텍스트를 제공하지 않으면 Windows 기본 IME UI를 유지한다.
+            return false;
+        }
         // 조합 문자열은 앱의 고정 미리보기 영역에 그린다. 후보 창은 TSF sink가 지원 여부에 따라 처리한다.
         result = DefWindowProcW(window, message, wParam, lParam & ~ISC_SHOWUICOMPOSITIONWINDOW);
         return true;
-    case WM_IME_STARTCOMPOSITION:
+    case WM_IME_STARTCOMPOSITION: {
+        const HIMC context = ImmGetContext(window);
+        if (!context) {
+            // HIMC가 없는 TSF 경로를 가짜 IMM 조합 상태로 표시하면 일반 문자 확정도 숨겨진다.
+            m_composition = {};
+            publish();
+            return false;
+        }
+        ImmReleaseContext(window, context);
         m_composition = {true, {}};
         publish();
         return true;
+    }
     case WM_IME_COMPOSITION: {
         const HIMC context = ImmGetContext(window);
         if (!context) {
-            return true;
+            // IMM 데이터가 없을 때 메시지를 삼키지 않아 TSF/기본 창 프로시저가 계속 처리하게 한다.
+            m_composition = {};
+            publish();
+            return false;
         }
         std::string committed;
         if (lParam & GCS_RESULTSTR) {
             // 조합 갱신(GCS_COMPSTR/CS_INSERTCHAR)은 편집 버퍼에 넣지 않고 확정 결과만 한 번 전달한다.
             committed = utf8(compositionString(context, GCS_RESULTSTR));
+            if (committed.empty()) {
+                // 일부 TSF IME는 결과 문자열을 IMM 호환 컨텍스트에 노출하지 않으므로 기본 처리에 넘긴다.
+                ImmReleaseContext(window, context);
+                m_composition = {};
+                publish();
+                return false;
+            }
             m_composition.preedit.clear();
         }
         if (lParam & GCS_COMPSTR) {

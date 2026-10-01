@@ -91,14 +91,15 @@ ImGuiInputSession::EditorInteraction ImGuiInputSession::drawEditor(
     return {clicked, active};
 }
 
-bool ImGuiInputSession::button(const char *label, const ImVec2 &size, bool selected) {
+bool ImGuiInputSession::button(const char *label, const ImVec2 &size, bool selected, bool enabled) {
     ImGuiWindow *window = ImGui::GetCurrentWindow();
     if (window->SkipItems) {
         return false;
     }
 
     const ImGuiStyle &style = ImGui::GetStyle();
-    const ImVec2 textSize = ImGui::CalcTextSize(label);
+    const char *labelEnd = ImGui::FindRenderedTextEnd(label);
+    const ImVec2 textSize = ImGui::CalcTextSize(label, labelEnd);
     const ImVec2 actualSize = ImGui::CalcItemSize(
         size, textSize.x + style.FramePadding.x * 2.0f, textSize.y + style.FramePadding.y * 2.0f);
     const ImVec2 position = ImGui::GetCursorScreenPos();
@@ -114,19 +115,19 @@ bool ImGuiInputSession::button(const char *label, const ImVec2 &size, bool selec
 
     const ImGuiIO &io = ImGui::GetIO();
     const bool windowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
-    const bool hovered = windowHovered && ImGui::IsMouseHoveringRect(bounds.Min, bounds.Max, true);
+    const bool hovered = enabled && windowHovered && ImGui::IsMouseHoveringRect(bounds.Min, bounds.Max, true);
     if (hovered) {
         // HoveredId만 등록하고 편집창의 ActiveId와 키보드 포커스는 바꾸지 않는다.
         ImGui::SetHoveredID(id);
     }
-    if (io.MouseClicked[ImGuiMouseButton_Left] && windowHovered &&
+    if (enabled && io.MouseClicked[ImGuiMouseButton_Left] && windowHovered &&
         window->ClipRect.Contains(io.MouseClickedPos[ImGuiMouseButton_Left]) &&
         bounds.Contains(io.MouseClickedPos[ImGuiMouseButton_Left])) {
         m_pressedButtonId = id;
     }
 
     const bool held = m_pressedButtonId == id && io.MouseDown[ImGuiMouseButton_Left] && hovered;
-    const ImGuiCol normalColor = selected ? ImGuiCol_Header : ImGuiCol_Button;
+    const ImGuiCol normalColor = !enabled ? ImGuiCol_FrameBg : selected ? ImGuiCol_Header : ImGuiCol_Button;
     const ImGuiCol hoveredColor = selected ? ImGuiCol_HeaderHovered : ImGuiCol_ButtonHovered;
     const ImGuiCol activeColor = selected ? ImGuiCol_HeaderActive : ImGuiCol_ButtonActive;
     ImGui::RenderFrame(bounds.Min, bounds.Max,
@@ -134,10 +135,13 @@ bool ImGuiInputSession::button(const char *label, const ImVec2 &size, bool selec
                        true, style.FrameRounding);
     const ImVec2 textPosition(bounds.Min.x + (actualSize.x - textSize.x) * 0.5f,
                               bounds.Min.y + (actualSize.y - textSize.y) * 0.5f);
-    ImGui::GetWindowDrawList()->AddText(textPosition, ImGui::GetColorU32(ImGuiCol_Text), label);
+    if (labelEnd > label) {
+        ImGui::GetWindowDrawList()->AddText(
+            textPosition, ImGui::GetColorU32(enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled), label, labelEnd);
+    }
 
     // 프로토타입과 같이 같은 버튼 안에서 뗀 경우에만 한 번 실행하고, 드래그 이탈은 취소한다.
-    if (m_pressedButtonId == id && io.MouseReleased[ImGuiMouseButton_Left]) {
+    if (enabled && m_pressedButtonId == id && io.MouseReleased[ImGuiMouseButton_Left]) {
         m_pressedButtonId = 0;
         return hovered;
     }
@@ -249,6 +253,66 @@ bool ImGuiInputSession::horizontalScrollbar(const char *label, const ImVec2 &siz
     drawList->AddRectFilled(ImVec2(thumbX, position.y),
                             ImVec2(thumbX + thumbWidth, bounds.Max.y),
                             ImGui::GetColorU32(thumbColor), 6.0f);
+    return scroll != previousScroll;
+}
+
+bool ImGuiInputSession::verticalScrollbar(const char *label, const ImVec2 &size,
+                                         float maxScroll, float visibleHeight, float &scroll) {
+    ImGuiWindow *window = ImGui::GetCurrentWindow();
+    if (window->SkipItems) {
+        return false;
+    }
+    const ImVec2 actualSize = ImGui::CalcItemSize(size, 24.0f, ImGui::GetContentRegionAvail().y);
+    const ImVec2 position = ImGui::GetCursorScreenPos();
+    const ImRect bounds(position, ImVec2(position.x + actualSize.x, position.y + actualSize.y));
+    ImGui::ItemSize(bounds);
+    const ImGuiID id = window->GetID(label);
+    if (!ImGui::ItemAdd(bounds, id, nullptr, ImGuiItemFlags_NoNav)) {
+        return false;
+    }
+    const ImVec2 visibleMinimum(ImMax(bounds.Min.x, window->ClipRect.Min.x),
+                                ImMax(bounds.Min.y, window->ClipRect.Min.y));
+    const ImVec2 visibleMaximum(ImMin(bounds.Max.x, window->ClipRect.Max.x),
+                                ImMin(bounds.Max.y, window->ClipRect.Max.y));
+    m_virtualControlBounds.emplace_back(visibleMinimum.x, visibleMinimum.y,
+                                        visibleMaximum.x, visibleMaximum.y);
+
+    const ImGuiIO &io = ImGui::GetIO();
+    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+        ImGui::IsMouseHoveringRect(bounds.Min, bounds.Max, true);
+    if (hovered) {
+        ImGui::SetHoveredID(id);
+    }
+    maxScroll = std::max(0.0f, maxScroll);
+    visibleHeight = std::max(1.0f, visibleHeight);
+    const float previousScroll = scroll;
+    scroll = std::clamp(scroll, 0.0f, maxScroll);
+    const float thumbHeight = maxScroll > 0.0f
+        ? std::clamp(actualSize.y * visibleHeight / (visibleHeight + maxScroll),
+                     std::min(32.0f, actualSize.y), actualSize.y)
+        : actualSize.y;
+    const float travel = actualSize.y - thumbHeight;
+    float thumbY = position.y + (maxScroll > 0.0f ? scroll / maxScroll * travel : 0.0f);
+    if (hovered && io.MouseClicked[ImGuiMouseButton_Left] && travel > 0.0f) {
+        m_draggedScrollbarId = id;
+        const float clickY = io.MouseClickedPos[ImGuiMouseButton_Left].y;
+        m_scrollbarGrabOffset = clickY >= thumbY && clickY <= thumbY + thumbHeight
+            ? clickY - thumbY : thumbHeight * 0.5f;
+    }
+    const bool dragging = m_draggedScrollbarId == id;
+    if (dragging && travel > 0.0f) {
+        scroll = std::clamp((io.MousePos.y - position.y - m_scrollbarGrabOffset) / travel,
+                            0.0f, 1.0f) * maxScroll;
+        thumbY = position.y + scroll / maxScroll * travel;
+    }
+
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(bounds.Min, bounds.Max, ImGui::GetColorU32(ImGuiCol_ScrollbarBg), 8.0f);
+    const ImGuiCol thumbColor = dragging ? ImGuiCol_ScrollbarGrabActive :
+        hovered ? ImGuiCol_ScrollbarGrabHovered : ImGuiCol_ScrollbarGrab;
+    drawList->AddRectFilled(ImVec2(position.x, thumbY),
+                            ImVec2(bounds.Max.x, thumbY + thumbHeight),
+                            ImGui::GetColorU32(thumbColor), 8.0f);
     return scroll != previousScroll;
 }
 

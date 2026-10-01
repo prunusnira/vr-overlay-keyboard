@@ -81,6 +81,15 @@ constexpr std::array<TextTriple, static_cast<std::size_t>(TextId::Count)> kTexts
     {"지원 컨트롤러가 정해지기 전까지 SteamVR에서 각 소환 액션을 직접 바인딩해야 합니다.",
      "対応コントローラーが決まるまでは、SteamVR で各表示アクションを手動で割り当ててください。",
      "Until a controller profile is selected, bind each summon action in SteamVR manually."},
+    {"한국어", "韓国語", "Korean"},
+    {"일본어", "日本語", "Japanese"},
+    {"영어", "英語", "English"},
+    {"Caps Lock", "Caps Lock", "Caps Lock"},
+    {"왼쪽 Shift", "左 Shift", "Left Shift"},
+    {"입력 언어 추가 필요", "入力言語の追加が必要です", "Input language required"},
+    {"이 입력기는 설치되어 있지 않습니다. Windows 설정 > 시간 및 언어 > 언어 및 지역에서 입력 언어를 추가하세요.",
+     "この入力方式はインストールされていません。Windows の設定 > 時刻と言語 > 言語と地域で入力言語を追加してください。",
+     "This input method is not installed. Add it in Windows Settings > Time & language > Language & region."},
 }};
 
 static_assert(kTexts.size() == static_cast<std::size_t>(TextId::Count));

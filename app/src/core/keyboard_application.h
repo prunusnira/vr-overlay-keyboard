@@ -11,6 +11,7 @@ public:
 
     KeyboardApplication(OverlayControlPort &overlay,
                         InputLanguagePort &languages,
+                        ImeModePort &imeModes,
                         VirtualKeyPort &virtualKeys,
                         CandidateSelectionPort &candidates,
                         ChatboxPort &chatbox,
@@ -30,7 +31,8 @@ public:
     bool setOptionsOpen(bool open) override;
     bool applySettings(const AppSettings &settings) override;
     bool sendKey(KeyCode key, bool withShift) override;
-    bool activateInputLanguage(const std::string &languageId) override;
+    InputLanguageActivationResult selectKeyboardLanguage(KeyboardLanguage language,
+                                                         std::string *error) override;
     bool selectCandidate(std::uint32_t index) override;
     bool submitChatboxText(const std::string &utf8Text) override;
 
@@ -40,6 +42,7 @@ private:
 
     OverlayControlPort &m_overlay;
     InputLanguagePort &m_languages;
+    ImeModePort &m_imeModes;
     VirtualKeyPort &m_virtualKeys;
     CandidateSelectionPort &m_candidates;
     ChatboxPort &m_chatbox;

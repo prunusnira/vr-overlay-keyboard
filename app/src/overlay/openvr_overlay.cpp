@@ -483,8 +483,7 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
     bool intersects = false;
     if (m_isGripDragging) {
         sample = m_dragHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
-        if (!sample || !sample->poseActive || !sample->gripPressed ||
-            sample->hand != settings.pointerHand) {
+        if (!sample || !sample->poseActive || !sample->gripPressed) {
             // Grip을 놓거나 손 추적이 끊기면 현재 절대 좌표에서 이동을 끝낸다.
             m_isGripDragging = false;
             if (sample && sample->gripPressed) {
@@ -509,7 +508,7 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
 
     if (m_hasCaptureHand) {
         sample = m_captureHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
-        if (!sample) {
+        if (!sample || !sample->poseActive) {
             // 누르는 동안 손 추적이 사라지면 ImGui에 취소 이벤트를 보내 버튼 눌림 상태를 해제한다.
             resetPointerState();
             return;
@@ -520,21 +519,55 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
                                             &x,
                                             &y);
     } else {
-        sample = settings.pointerHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
+        int leftX = -1;
+        int leftY = -1;
+        int rightX = -1;
+        int rightY = -1;
+        const bool leftIntersects = leftSample && computePointerPosition(
+            *leftSample, settings.pointerOffsetXPercent, settings.pointerOffsetYPercent, &leftX, &leftY);
+        const bool rightIntersects = rightSample && computePointerPosition(
+            *rightSample, settings.pointerOffsetXPercent, settings.pointerOffsetYPercent, &rightX, &rightY);
+        const bool leftGripReady = leftIntersects && leftSample->gripPressed &&
+            !m_gripAwaitingRelease[handIndex(keyboard::ControllerHand::Left)];
+        const bool rightGripReady = rightIntersects && rightSample->gripPressed &&
+            !m_gripAwaitingRelease[handIndex(keyboard::ControllerHand::Right)];
+        const bool leftSelectReady = leftIntersects && leftSample->selectPressed;
+        const bool rightSelectReady = rightIntersects && rightSample->selectPressed;
+
+        // 어느 손이든 오버레이를 가리키면 쓸 수 있게 하고, 겹치는 경우에는 누른 손 또는 마지막 손을 유지한다.
+        if (leftGripReady != rightGripReady) {
+            sample = leftGripReady ? leftSample : rightSample;
+        } else if (leftSelectReady != rightSelectReady) {
+            sample = leftSelectReady ? leftSample : rightSample;
+        } else if (leftIntersects != rightIntersects) {
+            sample = leftIntersects ? leftSample : rightSample;
+        } else if (leftIntersects && rightIntersects) {
+            sample = m_lastPointerHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
+        } else {
+            sample = m_lastPointerHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
+            if (!sample) {
+                sample = m_lastPointerHand == keyboard::ControllerHand::Left ? rightSample : leftSample;
+            }
+        }
         if (!sample) {
+            if (m_pointerInsideOverlay) {
+                dispatchPointerEvent(keyboard::PointerEventType::Leave, -1, -1);
+            }
             m_pointerInsideOverlay = false;
+            m_lastPointerX = -1;
+            m_lastPointerY = -1;
             return;
         }
-        intersects = computePointerPosition(*sample,
-                                            settings.pointerOffsetXPercent,
-                                            settings.pointerOffsetYPercent,
-                                            &x,
-                                            &y);
+        intersects = sample->hand == keyboard::ControllerHand::Left ? leftIntersects : rightIntersects;
+        if (intersects) {
+            x = sample->hand == keyboard::ControllerHand::Left ? leftX : rightX;
+            y = sample->hand == keyboard::ControllerHand::Left ? leftY : rightY;
+            m_lastPointerHand = sample->hand;
+        }
     }
 
     const std::size_t selectedIndex = handIndex(sample->hand);
-    if (intersects && sample->hand == settings.pointerHand && sample->gripPressed &&
-        !m_gripAwaitingRelease[selectedIndex]) {
+    if (intersects && sample->gripPressed && !m_gripAwaitingRelease[selectedIndex]) {
         // 트리거로 UI를 누른 상태여도 Grip 이동을 먼저 처리하고 기존 클릭은 취소한다.
         std::string dragError;
         if (beginGripDrag(*sample, &dragError)) {

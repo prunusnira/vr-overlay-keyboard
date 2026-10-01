@@ -92,7 +92,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     OscClient chatboxSender;
     OpenVrOverlay overlay;
     keyboard::KeyboardApplication keyboardApplication(
-        overlay, languageService, virtualKeySender, tsfInput, chatboxSender, settingsStore);
+        overlay, languageService, tsfInput, virtualKeySender, tsfInput, chatboxSender, settingsStore);
     KeyboardUi keyboardUi(keyboardApplication);
 
     keyboardUi.setFocusRequestCallback([&host, &virtualKeySender](std::string *error) {

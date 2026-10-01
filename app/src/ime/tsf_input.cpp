@@ -1,6 +1,7 @@
 #include "tsf_input.h"
 
 #include <Windows.h>
+#include <ctffunc.h>
 #include <msctf.h>
 #include <wrl/client.h>
 
@@ -32,6 +33,50 @@ void setHresultError(std::string *error, const char *operation, HRESULT result) 
                     << static_cast<unsigned long>(result) << ".";
         *error = description.str();
     }
+}
+
+HRESULT conversionModeCompartment(ITfThreadMgrEx *threadManager,
+                                  ComPtr<ITfCompartment> *compartment) {
+    if (!threadManager || !compartment) {
+        return E_POINTER;
+    }
+    ComPtr<ITfCompartmentMgr> manager;
+    HRESULT result = threadManager->QueryInterface(IID_PPV_ARGS(manager.GetAddressOf()));
+    if (FAILED(result)) {
+        return result;
+    }
+    return manager->GetCompartment(GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION,
+                                   compartment->GetAddressOf());
+}
+
+bool switchJapaneseImeToKana(std::string *error) {
+    // Windows Japanese IME uses Alt+` to switch between alphanumeric and Hiragana input.
+    INPUT inputs[4] = {};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = VK_MENU;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = VK_OEM_3;
+    inputs[2] = inputs[1];
+    inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+    inputs[3] = inputs[0];
+    inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+
+    const UINT sent = SendInput(static_cast<UINT>(std::size(inputs)), inputs, sizeof(INPUT));
+    if (sent == std::size(inputs)) {
+        return true;
+    }
+    if (sent > 0) {
+        INPUT releaseAlt{};
+        releaseAlt.type = INPUT_KEYBOARD;
+        releaseAlt.ki.wVk = VK_MENU;
+        releaseAlt.ki.dwFlags = KEYEVENTF_KEYUP;
+        SendInput(1, &releaseAlt, sizeof(releaseAlt));
+    }
+    if (error) {
+        *error = "Could not switch the Japanese IME to Hiragana mode (Windows error " +
+                 std::to_string(GetLastError()) + ").";
+    }
+    return false;
 }
 
 class CandidateSink final : public ITfUIElementSink {
@@ -269,6 +314,79 @@ bool TsfInput::selectCandidate(std::uint32_t index, std::string *error) {
     }
     if (FAILED(result)) {
         setHresultError(error, "Candidate selection/finalization", result);
+        return false;
+    }
+    return true;
+}
+
+keyboard::ImeModeSnapshot TsfInput::currentMode() const {
+    keyboard::ImeModeSnapshot snapshot;
+    ComPtr<ITfCompartment> compartment;
+    HRESULT result = conversionModeCompartment(m_impl->threadManager.Get(), &compartment);
+    if (FAILED(result)) {
+        return snapshot;
+    }
+
+    VARIANT value;
+    VariantInit(&value);
+    result = compartment->GetValue(&value);
+    if (SUCCEEDED(result) && value.vt == VT_I4) {
+        const DWORD flags = static_cast<DWORD>(value.lVal);
+        snapshot.available = true;
+        snapshot.native = (flags & TF_CONVERSIONMODE_NATIVE) != 0;
+        snapshot.fullShape = (flags & TF_CONVERSIONMODE_FULLSHAPE) != 0;
+        snapshot.katakana = (flags & TF_CONVERSIONMODE_KATAKANA) != 0;
+    }
+    VariantClear(&value);
+    return snapshot;
+}
+
+bool TsfInput::setMode(keyboard::KeyboardLanguage language, std::string *error) {
+    if (!m_impl->threadManager || !m_impl->activated) {
+        if (error) {
+            *error = "TSF input mode control is unavailable because TSF is not initialized.";
+        }
+        return false;
+    }
+
+    const keyboard::ImeModeSnapshot previousMode = currentMode();
+    DWORD flags = 0;
+    switch (language) {
+    case keyboard::KeyboardLanguage::Korean:
+        flags = TF_CONVERSIONMODE_NATIVE;
+        break;
+    case keyboard::KeyboardLanguage::Japanese:
+        flags = TF_CONVERSIONMODE_NATIVE | TF_CONVERSIONMODE_FULLSHAPE;
+        break;
+    case keyboard::KeyboardLanguage::English:
+        // Alphanumeric mode is zero; in Japanese this is half-width alphanumeric input.
+        flags = TF_CONVERSIONMODE_ALPHANUMERIC;
+        break;
+    }
+
+    // Windows can activate the Japanese layout in its default half-width A mode.
+    // Use the IME shortcut for that state; the queued key event is the reliable mode
+    // switch, while writing the compartment afterward could toggle it back to A.
+    if (language == keyboard::KeyboardLanguage::Japanese &&
+        (!previousMode.available || !previousMode.native)) {
+        return switchJapaneseImeToKana(error);
+    }
+
+    ComPtr<ITfCompartment> compartment;
+    HRESULT result = conversionModeCompartment(m_impl->threadManager.Get(), &compartment);
+    if (FAILED(result)) {
+        setHresultError(error, "Get keyboard conversion-mode compartment", result);
+        return false;
+    }
+
+    VARIANT value;
+    VariantInit(&value);
+    value.vt = VT_I4;
+    value.lVal = static_cast<LONG>(flags);
+    result = compartment->SetValue(m_impl->clientId, &value);
+    VariantClear(&value);
+    if (FAILED(result)) {
+        setHresultError(error, "Set keyboard conversion mode", result);
         return false;
     }
     return true;

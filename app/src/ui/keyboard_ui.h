@@ -26,12 +26,12 @@ private:
     void requestEditorFocus();
     void sendKey(keyboard::KeyCode key, bool withShift = false);
     void appendLog(std::string message);
-    void drawInputLanguages(const std::vector<keyboard::InputLanguage> &languages,
-                            keyboard::UiLanguage uiLanguage);
+    void drawInputLanguages(const keyboard::AppUiState &state, keyboard::UiLanguage uiLanguage);
+    void drawMissingInputLanguagePopup(keyboard::UiLanguage uiLanguage);
     void drawCandidates(const keyboard::CandidateSnapshot &snapshot,
                         const keyboard::CompositionSnapshot &composition,
                         keyboard::UiLanguage uiLanguage);
-    void drawKeyboard(keyboard::UiLanguage uiLanguage);
+    void drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLanguage uiLanguage);
     void addImeFonts();
 
     keyboard::KeyboardActions &m_actions;
@@ -47,6 +47,7 @@ private:
     bool m_editorFocusArmed = false;
     bool m_focusEditorNextFrame = false;
     bool m_shiftForNextKey = false;
+    bool m_openMissingInputLanguagePopup = false;
     bool m_diagnosticsExpanded = false;
     bool m_pointerCursorVisible = false;
     int m_pointerCursorX = -1;
