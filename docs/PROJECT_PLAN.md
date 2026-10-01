@@ -1,6 +1,6 @@
 # VRChat용 SteamVR 오버레이 키보드 기획
 
-상태: 첫 프로토타입 구현 완료. 사용자 확인으로 SteamVR 컨트롤러 입력과 VRChat Chatbox OSC 입력이 동작했다. 일본어 IME 모드 전환도 해결됐다. 한국어 가상 키 입력은 자모별로 커밋되는 문제가 남아 있고, TSF 후보 선택·중국어 입력·다국어 OSC 왕복은 확인되지 않았다. 상세 결과는 [프로토타입 README](../prototype/windows-ime-overlay/README.md)에 기록했다.
+상태: 첫 프로토타입 구현 완료. 사용자는 프로토타입의 SteamVR 대시보드 오버레이에서 컨트롤러 포인터 입력과 VRChat Chatbox OSC 입력이 동작하는 것을 확인했고, 입력 언어 표시 변경과 일본어 IME 모드 전환도 확인했다. 본격 개발은 `app/`에 새 CMake 프로젝트를 만들고 이 검증된 사용자 흐름을 모듈 구조와 일반 오버레이 실행 방식에 맞춰 다시 구현한다. 프로토타입 코드는 제품 앱으로 옮기거나 수정하지 않는다. 새 앱에서는 기존 확인 흐름을 회귀 기준으로 삼고, 대시보드 없는 표시·숨김과 미해결 입력 경로를 추가로 검증한다. 한국어 가상 키 입력은 자모별로 커밋되는 문제가 남아 있고, TSF 후보 선택·중국어 입력·다국어 OSC 왕복은 확인되지 않았다. 상세 결과는 [프로토타입 README](../prototype/windows-ime-overlay/README.md)에 기록했다.
 
 ## 목표와 범위
 
@@ -10,11 +10,14 @@ Windows PC에서 SteamVR 오버레이 키보드를 띄우고, 사용자가 오�
 
 ## 사용자 흐름
 
-1. SteamVR에서 오버레이 키보드를 연다.
-2. 컨트롤러로 키를 누르면 오버레이의 입력란에 입력 과정과 결과가 표시된다.
-3. 한글 조합, 일본어 로마자 변환, 중국어 병음 변환을 Windows IME로 처리한다. 변환 후보는 헤드셋에서 보고 선택할 수 있어야 한다.
-4. 사용자가 `VRChat 입력란 채우기`를 누르면 완성된 문장을 OSC `/chatbox/input`에 `send=false`로 보낸다.
-5. VRChat Chatbox 키보드가 열리고 문장이 채워진다. 사용자는 VRChat에서 내용을 확인하고 최종 전송한다.
+1. 지원 컨트롤러 바인딩이 정해지기 전에는 SteamVR Input 설정에서 `ToggleKeyboard`, `ControllerPose`, `PointerClick` 액션을 직접 연결한다. 앱 기본 바인딩은 대상 컨트롤러를 정한 뒤 추가한다.
+2. SteamVR이 실행 중일 때 사용자가 액션을 실행하면 앱이 대시보드를 열지 않고 일반 OpenVR 오버레이를 표시한다. 같은 액션을 다시 실행하면 오버레이를 숨긴다.
+3. 컨트롤러 포인터로 오버레이의 키를 누르면 입력란에 입력 과정과 결과가 표시된다.
+4. 한글 조합, 일본어 로마자 변환, 중국어 병음 변환을 Windows IME로 처리한다. 변환 후보는 헤드셋에서 보고 선택할 수 있어야 한다.
+5. 사용자가 `VRChat 입력란 채우기`를 누르면 완성된 문장을 OSC `/chatbox/input`에 `send=false`로 보낸다.
+6. VRChat Chatbox 키보드가 열리고 문장이 채워진다. 사용자는 VRChat에서 내용을 확인하고 최종 전송한다.
+
+SteamVR Input 바인딩은 최초 설정에 필요하지만, 일반 사용 중 오버레이를 표시할 때 SteamVR 대시보드를 열 필요는 없다. 전역 단축키나 외부 프로세스 명령은 추후 같은 앱 커맨드에 연결할 수 있는 확장 경로다. 모듈 경계와 상세 실행 흐름은 [모듈 아키텍처](ARCHITECTURE.md)를 참고한다.
 
 VRChat 문서는 `/chatbox/input`의 `send=false`가 키보드를 열어 문장을 채우고, `send=true`가 키보드를 거치지 않고 바로 전송한다고 설명한다. 따라서 현재 흐름의 버튼은 즉시 게시가 아닌 **입력란 채우기**로 정의한다. [VRChat Chatbox OSC 입력](https://docs.vrchat.com/docs/osc-as-input-controller)
 
@@ -39,12 +42,13 @@ VRChat 문서는 `/chatbox/input`의 `send=false`가 키보드를 열어 문장�
 | --- | --- | --- |
 | C++와 Qt | 입력란, 가상 키, 입력 상태 표시 | Qt 화면은 우선 검토하되 Qt 입력란과 TSF의 결합은 미확인 |
 | Windows IME와 TSF | 한글 조합, 일본어와 중국어 변환 및 후보 데이터 제공 | Windows 입력기를 사용하려는 후보 경로. 현행 입력기별 UI-less 후보 지원은 미확인 |
-| OpenVR `IVROverlay` | SteamVR 화면 표시와 컨트롤러 포인터 이벤트 | Valve 공식 오버레이 API 사용 |
+| SteamVR Input | 토글 커맨드와 컨트롤러 포인터 자세·클릭 입력을 전달 | 액션 manifest와 입력 어댑터 초안을 구현. 컨트롤러 바인딩과 대시보드가 닫힌 상태의 수신은 미검증 |
+| OpenVR `IVROverlay` | 대시보드와 독립적인 오버레이 표시·숨김, HMD 기준 위치, 컨트롤러 포인터 이벤트 | 일반 오버레이 어댑터 초안은 `ComputeOverlayIntersection`으로 포인터 좌표를 계산한다. HMD 동작은 미검증 |
 | OSC 클라이언트 | 완성된 문장을 VRChat에 전달 | `/chatbox/input`으로 전송 |
 
 Valve의 `IVROverlay`는 2D 이미지를 VR 화면 위에 표시하고 오버레이 입력 이벤트를 받는다. 공식 `helloworldoverlay` 예제는 Qt를 이용해 오버레이 화면과 입력을 다룬다. Qt의 입력 메서드 이벤트는 조합 중 문자열과 확정 문자열을 구분한다. [OpenVR 오버레이 개요](https://github.com/ValveSoftware/openvr/wiki/IVROverlay_Overview), [Valve 오버레이 예제](https://github.com/ValveSoftware/openvr/tree/master/samples/helloworldoverlay), [Qt 입력 메서드 이벤트](https://doc.qt.io/qt-6/qinputmethodevent.html)
 
-오버레이가 Windows 텍스트 입력 포커스를 얻는 방법, 컨트롤러로 누른 가상 키가 Windows IME에 전달되는 방법은 아직 확인되지 않았다. 일반 Windows 창에서 동작하는 입력란을 OpenVR 오버레이에 표시하는 것만으로 두 기능이 자동 연결된다고 가정하지 않는다.
+일반 오버레이의 표시·숨김, 컨트롤러 포인터 입력, Windows 텍스트 입력 포커스와 IME 키 전달은 서로 다른 경로다. 일반 Windows 창에서 동작하는 입력란을 OpenVR 오버레이에 표시하는 것만으로 이 기능들이 자동 연결된다고 가정하지 않는다. 특히 현재 프로토타입의 `SendInput` 경로는 앱이 Windows 전경 프로세스여야 한다.
 
 ## HMD 안의 변환 후보 표시
 
@@ -66,9 +70,10 @@ Windows TSF의 UI-less mode는 앱이 IME의 후보 UI를 대신 그리도록 �
 
 ## 실기기 확인과 구현 순서
 
-1. **기술 경로 판정:** Windows와 HMD에서 [기술 조사의 실기기 판정 항목](TECHNICAL_FEASIBILITY.md#windows-실기기에서-필요한-판정)을 확인한다. 이를 위해 기능별 최소 확인 프로그램은 필요하다. 이 확인이 끝나기 전에는 Qt와 TSF의 결합 방식을 확정하지 않는다.
-2. **입력부 구현:** 통과한 경로로 영어 키 입력, 한글 조합, 일본어 및 중국어 후보 표시·선택을 오버레이에 구현한다.
-3. **VRChat 연결:** 확정한 문장을 OSC로 Chatbox 입력란에 채우고 전체 흐름을 확인한다.
+1. **일반 오버레이와 커맨드 판정:** 대시보드가 닫힌 상태에서 SteamVR Input 액션으로 일반 오버레이를 표시·숨김하고, HMD 기준 위치와 컨트롤러 포인터 조작을 확인한다.
+2. **텍스트 입력 경로 판정:** Windows와 HMD에서 [기술 조사의 실기기 판정 항목](TECHNICAL_FEASIBILITY.md#windows-실기기에서-필요한-판정)을 확인한다. VRChat에 게임 포커스가 있는 동안의 입력 포커스, 영어·한글 조합, 일본어 및 필요한 경우 중국어 후보 표시·선택을 최소 확인 프로그램으로 판정한다. 이 확인이 끝나기 전에는 Qt와 TSF의 결합 방식을 확정하지 않는다.
+3. **새 앱과 모듈 구현:** `app/`에 신규 CMake 프로젝트를 만들고, 판정 결과에 따라 앱 코어, 커맨드 입력, 키보드 UI, 텍스트 입력, Windows 언어·TSF 어댑터, OpenVR 어댑터와 OSC 모듈을 새로 구현한다. 기존 프로토타입 소스는 수정하거나 이동하지 않는다. 구체적인 책임과 의존성 원칙은 [모듈 아키텍처](ARCHITECTURE.md)에 따른다.
+4. **VRChat 연결:** 확정한 문장을 OSC로 Chatbox 입력란에 채우고, 다국어 왕복과 전체 흐름을 확인한다.
 
 VRChat 공식 문서의 Chatbox 제한은 최대 144자와 최대 9줄이다. 줄 수에는 직접 입력한 줄바꿈과 자동 줄바꿈이 포함된다. 입력란과 전송 동작에 이 제한을 반영해야 한다. [VRChat Chatbox OSC 입력](https://docs.vrchat.com/docs/osc-as-input-controller)
 

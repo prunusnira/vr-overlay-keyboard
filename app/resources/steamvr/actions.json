@@ -1,0 +1,42 @@
+{
+  "default_bindings": [],
+  "actions": [
+    {
+      "name": "/actions/keyboard/in/ToggleKeyboard",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/ControllerPose",
+      "requirement": "optional",
+      "type": "pose"
+    },
+    {
+      "name": "/actions/keyboard/in/PointerClick",
+      "requirement": "optional",
+      "type": "boolean"
+    }
+  ],
+  "action_sets": [
+    {
+      "name": "/actions/keyboard",
+      "usage": "leftright"
+    }
+  ],
+  "localization": [
+    {
+      "language_tag": "en_us",
+      "/actions/keyboard": "Keyboard",
+      "/actions/keyboard/in/ToggleKeyboard": "Toggle Keyboard",
+      "/actions/keyboard/in/ControllerPose": "Controller Pointer Pose",
+      "/actions/keyboard/in/PointerClick": "Controller Pointer Click"
+    },
+    {
+      "language_tag": "ko_kr",
+      "/actions/keyboard": "키보드",
+      "/actions/keyboard/in/ToggleKeyboard": "키보드 표시 전환",
+      "/actions/keyboard/in/ControllerPose": "컨트롤러 포인터 위치",
+      "/actions/keyboard/in/PointerClick": "컨트롤러 포인터 클릭"
+    }
+  ]
+}
