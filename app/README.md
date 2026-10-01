@@ -27,7 +27,15 @@ Run `app/build/Release/vr-overlay-keyboard.exe` while SteamVR is running. The ap
 
 ## SteamVR Input setup
 
-The app registers `resources/steamvr/actions.json` at startup and reads three actions: `/actions/keyboard/in/ToggleKeyboard`, `ControllerPose`, and `PointerClick`. No controller-specific default binding is included until the supported controller is selected. In SteamVR's controller input settings, bind the toggle action, the target controller's aim pose to **Controller Pointer Pose**, and its select input to **Controller Pointer Click**. The app maps the pose ray to the ordinary overlay with OpenVR `ComputeOverlayIntersection`, then sends pointer events to Dear ImGui. Verify the action bindings and pointer path on the target setup; neither has been checked in an HMD yet.
+The app registers `resources/steamvr/actions.json` at startup and reads the `ToggleKeyboard`, `ControllerPose`, `PointerClick`, and left/right summon-button actions. No controller-specific default binding is included until the supported controller is selected. In SteamVR's controller input settings, bind the toggle action, the target controller's aim pose to **Controller Pointer Pose**, and its select input to **Controller Pointer Click**. Bind the selected **Summon Button** actions to the physical inputs used by the option setting. The app maps the pose ray to the ordinary overlay with OpenVR `ComputeOverlayIntersection`, then sends pointer events to Dear ImGui. Verify the action bindings and pointer path on the target setup; neither has been checked in an HMD yet.
+
+## Options and controller summon
+
+Use **Options** in the keyboard screen to open a separate ImGui settings window. It is drawn in the same frame as the keyboard, so the window appears in both the desktop view and the OpenVR overlay. The language setting changes the app UI only; Windows input language remains a separate control. Korean is the first-run UI language.
+
+The default summon combination is **Right Grip + Right B**, with a **0 second** hold time. Select one or more logical controls in Options and adjust the hold time from 0 to 3 seconds in 0.1-second steps. All selected controls must be pressed together. The combination shows a hidden overlay once; release the controls before it can trigger again. The existing **Toggle Keyboard** SteamVR action remains a show/hide toggle.
+
+Settings are saved to `%LOCALAPPDATA%\VROverlayKeyboard\settings.ini`. Until a controller profile is selected, SteamVR bindings must be configured manually. Available logical actions are left/right Grip, Trigger, A, B, Menu, Joystick, and Trackpad. Some controls may not exist on a particular controller; bind the selected actions in SteamVR and confirm that Options reports them active. The keyboard screen's **Hide keyboard overlay** button hides the VR overlay without closing the desktop app.
 
 ## Text and Chatbox input
 

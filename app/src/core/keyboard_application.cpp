@@ -8,14 +8,27 @@ KeyboardApplication::KeyboardApplication(OverlayControlPort &overlay,
                                          InputLanguagePort &languages,
                                          VirtualKeyPort &virtualKeys,
                                          CandidateSelectionPort &candidates,
-                                         ChatboxPort &chatbox)
+                                         ChatboxPort &chatbox,
+                                         SettingsPort &settings)
     : m_overlay(overlay),
       m_languages(languages),
       m_virtualKeys(virtualKeys),
       m_candidates(candidates),
-      m_chatbox(chatbox) {
+      m_chatbox(chatbox),
+      m_settings(settings) {
     // 구체 구현은 생성자로 주입해 코어가 Windows나 OpenVR SDK에 의존하지 않게 한다.
     m_state.overlayVisible = m_overlay.isVisible();
+    std::string error;
+    AppSettings loadedSettings;
+    if (m_settings.load(&loadedSettings, &error) && validateAppSettings(loadedSettings, &error)) {
+        m_state.settings = std::move(loadedSettings);
+    } else {
+        // 설정 파일이 없거나 읽을 수 없을 때는 안전한 기본 조합으로 시작한다.
+        m_state.settings = AppSettings{};
+        if (!error.empty()) {
+            m_state.status = "Settings could not be loaded; defaults restored: " + error;
+        }
+    }
 }
 
 void KeyboardApplication::setStateChangedCallback(StateChangedCallback callback) {
@@ -44,6 +57,14 @@ void KeyboardApplication::setComposition(const CompositionSnapshot &snapshot) {
     publish();
 }
 
+void KeyboardApplication::updateControllerButtons(const std::vector<ControllerButtonState> &buttons) {
+    m_state.controllerButtons = buttons;
+    if (m_summonTrigger.update(buttons, m_state.settings) && !m_overlay.isVisible()) {
+        // 호출 조합은 토글이 아니라 숨겨진 키보드를 표시하는 단방향 동작이다.
+        showOverlay();
+    }
+}
+
 void KeyboardApplication::setStatus(const std::string &message) {
     m_state.status = message;
     publish();
@@ -51,17 +72,67 @@ void KeyboardApplication::setStatus(const std::string &message) {
 
 bool KeyboardApplication::toggleOverlay() {
     // UI 버튼과 SteamVR 액션이 동일한 표시·숨김 경로를 사용한다.
+    return m_overlay.isVisible() ? hideOverlay() : showOverlay();
+}
+
+bool KeyboardApplication::showOverlay() {
+    if (m_overlay.isVisible()) {
+        m_state.overlayVisible = true;
+        return true;
+    }
+
     std::string error;
-    const bool succeeded = m_overlay.isVisible()
-        ? m_overlay.hide(&error)
-        : m_overlay.show(&error);
+    const bool succeeded = m_overlay.show(&error);
     if (!succeeded) {
         setFailure(error);
         return false;
     }
 
-    m_state.overlayVisible = m_overlay.isVisible();
-    m_state.status = m_state.overlayVisible ? "Keyboard overlay shown." : "Keyboard overlay hidden.";
+    m_state.overlayVisible = true;
+    m_state.status = "Keyboard overlay shown.";
+    publish();
+    return true;
+}
+
+bool KeyboardApplication::hideOverlay() {
+    if (!m_overlay.isVisible()) {
+        m_state.overlayVisible = false;
+        return true;
+    }
+
+    std::string error;
+    if (!m_overlay.hide(&error)) {
+        setFailure(error);
+        return false;
+    }
+
+    m_state.overlayVisible = false;
+    m_state.status = "Keyboard overlay hidden.";
+    publish();
+    return true;
+}
+
+bool KeyboardApplication::setOptionsOpen(bool open) {
+    m_state.optionsOpen = open;
+    publish();
+    return true;
+}
+
+bool KeyboardApplication::applySettings(const AppSettings &settings) {
+    std::string error;
+    if (!validateAppSettings(settings, &error)) {
+        setFailure(error);
+        return false;
+    }
+    if (!m_settings.save(settings, &error)) {
+        setFailure(error);
+        return false;
+    }
+
+    m_state.settings = settings;
+    // 조합 중 옵션을 바꿔도 이미 눌린 상태로 새 설정이 즉시 발화하지 않게 해제 입력을 기다린다.
+    m_summonTrigger.reset(true);
+    m_state.status = "Settings saved.";
     publish();
     return true;
 }

@@ -10,14 +10,16 @@ Windows PC에서 SteamVR 오버레이 키보드를 띄우고, 사용자가 오�
 
 ## 사용자 흐름
 
-1. 지원 컨트롤러 바인딩이 정해지기 전에는 SteamVR Input 설정에서 `ToggleKeyboard`, `ControllerPose`, `PointerClick` 액션을 직접 연결한다. 앱 기본 바인딩은 대상 컨트롤러를 정한 뒤 추가한다.
-2. SteamVR이 실행 중일 때 사용자가 액션을 실행하면 앱이 대시보드를 열지 않고 일반 OpenVR 오버레이를 표시한다. 같은 액션을 다시 실행하면 오버레이를 숨긴다.
+1. 지원 컨트롤러 바인딩이 정해지기 전에는 SteamVR Input 설정에서 `ToggleKeyboard`, `ControllerPose`, `PointerClick`과 옵션에서 선택한 소환 버튼 액션을 직접 연결한다. 앱 기본 바인딩은 대상 컨트롤러를 정한 뒤 추가한다.
+2. SteamVR이 실행 중일 때 기존 토글 액션은 일반 OpenVR 오버레이를 전환하고, 옵션에 지정한 버튼 조합은 숨겨진 오버레이를 표시한다. 소환 기본 조합은 오른쪽 Grip+B, 기본 유지시간은 0초다.
 3. 컨트롤러 포인터로 오버레이의 키를 누르면 입력란에 입력 과정과 결과가 표시된다.
 4. 한글 조합, 일본어 로마자 변환, 중국어 병음 변환을 Windows IME로 처리한다. 변환 후보는 헤드셋에서 보고 선택할 수 있어야 한다.
 5. 사용자가 `VRChat 입력란 채우기`를 누르면 완성된 문장을 OSC `/chatbox/input`에 `send=false`로 보낸다.
 6. VRChat Chatbox 키보드가 열리고 문장이 채워진다. 사용자는 VRChat에서 내용을 확인하고 최종 전송한다.
 
 SteamVR Input 바인딩은 최초 설정에 필요하지만, 일반 사용 중 오버레이를 표시할 때 SteamVR 대시보드를 열 필요는 없다. 전역 단축키나 외부 프로세스 명령은 추후 같은 앱 커맨드에 연결할 수 있는 확장 경로다. 모듈 경계와 상세 실행 흐름은 [모듈 아키텍처](ARCHITECTURE.md)를 참고한다.
+
+옵션 버튼은 별도 Dear ImGui 창을 열고 같은 프레임을 사용해 데스크톱과 HMD 오버레이에 내용을 표시한다. 여기서 한국어·일본어·영어 앱 UI를 선택하고 좌우 Grip·Trigger·A·B·Menu·Joystick·Trackpad 논리 버튼 중 소환 조합과 0~3초 홀드 시간을 지정한다. Windows 입력 언어 선택은 이 앱 UI 언어 설정과 분리되어 유지된다. 설정은 `%LOCALAPPDATA%\VROverlayKeyboard\settings.ini`에 저장한다. 컨트롤러 프로필을 고르기 전에는 선택한 SteamVR 소환 액션을 사용자가 직접 물리 버튼에 바인딩해야 한다.
 
 VRChat 문서는 `/chatbox/input`의 `send=false`가 키보드를 열어 문장을 채우고, `send=true`가 키보드를 거치지 않고 바로 전송한다고 설명한다. 따라서 현재 흐름의 버튼은 즉시 게시가 아닌 **입력란 채우기**로 정의한다. [VRChat Chatbox OSC 입력](https://docs.vrchat.com/docs/osc-as-input-controller)
 
@@ -42,7 +44,7 @@ VRChat 문서는 `/chatbox/input`의 `send=false`가 키보드를 열어 문장�
 | --- | --- | --- |
 | C++와 Dear ImGui, Win32, OpenGL3 | 데스크톱 UI, 입력란, 가상 키, 상태 표시와 OpenVR용 프레임 생성 | 후보 영역은 고정 높이·가로 스크롤로 배치하고 오버레이 표시 중 약 30Hz로 프레임을 전달한다. IME 조합과 readback 성능은 검증 필요 |
 | Windows IME와 TSF | 한글 조합, 일본어와 중국어 변환 및 후보 데이터 제공 | Windows 입력기를 사용하려는 후보 경로. 현행 입력기별 UI-less 후보 지원은 미확인 |
-| SteamVR Input | 토글 커맨드와 컨트롤러 포인터 자세·클릭 입력을 전달 | 액션 manifest와 입력 어댑터를 구현했다. 컨트롤러 바인딩과 대시보드가 닫힌 상태의 수신은 미검증 |
+| SteamVR Input | 기존 토글, 컨트롤러 포인터 자세·클릭, 소환 조합 버튼 입력을 전달 | 액션 manifest와 입력 어댑터를 구현했다. 대상 컨트롤러 바인딩과 대시보드가 닫힌 상태의 수신은 미검증 |
 | OpenVR `IVROverlay` | 대시보드와 독립적인 오버레이 표시·숨김, HMD 기준 위치, 컨트롤러 포인터 이벤트 | 현재 어댑터가 `ComputeOverlayIntersection`으로 포인터 좌표를 계산한다. HMD 동작은 미검증 |
 | OSC 클라이언트 | 완성된 문장을 VRChat에 전달 | `/chatbox/input`으로 전송 |
 
@@ -73,9 +75,10 @@ Windows TSF의 UI-less mode는 앱이 IME의 후보 UI를 대신 그리도록 �
 ## 실기기 확인과 구현 순서
 
 1. **일반 오버레이와 커맨드 판정:** 대시보드가 닫힌 상태에서 SteamVR Input 액션으로 일반 오버레이를 표시·숨김하고, HMD 기준 위치와 컨트롤러 포인터 조작을 확인한다.
-2. **텍스트 입력 경로 판정:** Windows와 HMD에서 [기술 조사의 실기기 판정 항목](TECHNICAL_FEASIBILITY.md#windows-실기기에서-필요한-판정)을 확인한다. VRChat에 게임 포커스가 있는 동안의 입력 포커스, 영어·한글 조합, 일본어 및 필요한 경우 중국어 후보 표시·선택을 Dear ImGui 앱에서 판정한다. 이 확인 결과에 따라 편집 문자열과 TSF 문서 상태의 책임을 확정한다.
-3. **현재 앱 구조 보완:** `app/`의 Dear ImGui 기반 CMake 프로젝트와 앱 코어, 커맨드 입력, 키보드 UI, Windows 언어·TSF 어댑터, OpenVR 어댑터와 OSC 모듈을 실기기 판정 결과에 맞춰 보완한다. 기존 프로토타입 소스는 수정하거나 이동하지 않는다. 구체적인 책임과 의존성 원칙은 [모듈 아키텍처](ARCHITECTURE.md)에 따른다.
-4. **VRChat 연결:** 확정한 문장을 OSC로 Chatbox 입력란에 채우고, 다국어 왕복과 전체 흐름을 확인한다.
+2. **소환 옵션:** UI 언어·버튼 조합·0~3초 홀드 시간이 앱 재시작 뒤에도 유지되는지 확인한다. 기본 오른쪽 Grip+B·0초 조합이 한 번만 표시하고, 버튼을 놓은 다음 새 입력에서 다시 발화하는지 확인한다.
+3. **텍스트 입력 경로 판정:** Windows와 HMD에서 [기술 조사의 실기기 판정 항목](TECHNICAL_FEASIBILITY.md#windows-실기기에서-필요한-판정)을 확인한다. VRChat에 게임 포커스가 있는 동안의 입력 포커스, 영어·한글 조합, 일본어 및 필요한 경우 중국어 후보 표시·선택을 Dear ImGui 앱에서 판정한다. 이 확인 결과에 따라 편집 문자열과 TSF 문서 상태의 책임을 확정한다.
+4. **현재 앱 구조 보완:** `app/`의 Dear ImGui 기반 CMake 프로젝트와 앱 코어, 커맨드 입력, 키보드 UI, Windows 언어·TSF 어댑터, OpenVR 어댑터와 OSC 모듈을 실기기 판정 결과에 맞춰 보완한다. 기존 프로토타입 소스는 수정하거나 이동하지 않는다. 구체적인 책임과 의존성 원칙은 [모듈 아키텍처](ARCHITECTURE.md)에 따른다.
+5. **VRChat 연결:** 확정한 문장을 OSC로 Chatbox 입력란에 채우고, 다국어 왕복과 전체 흐름을 확인한다.
 
 VRChat 공식 문서의 Chatbox 제한은 최대 144자와 최대 9줄이다. 줄 수에는 직접 입력한 줄바꿈과 자동 줄바꿈이 포함된다. 입력란과 전송 동작에 이 제한을 반영해야 한다. [VRChat Chatbox OSC 입력](https://docs.vrchat.com/docs/osc-as-input-controller)
 

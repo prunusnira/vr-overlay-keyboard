@@ -1,6 +1,7 @@
 #include "steamvr_action_source.h"
 
 #include <cstddef>
+#include <array>
 #include <utility>
 
 namespace {
@@ -8,6 +9,28 @@ constexpr char kActionSetPath[] = "/actions/keyboard";
 constexpr char kToggleActionPath[] = "/actions/keyboard/in/ToggleKeyboard";
 constexpr char kPointerPoseActionPath[] = "/actions/keyboard/in/ControllerPose";
 constexpr char kPointerClickActionPath[] = "/actions/keyboard/in/PointerClick";
+
+struct ControllerActionPath {
+    keyboard::ControllerButton button;
+    const char *path;
+};
+
+constexpr std::array<ControllerActionPath, keyboard::kControllerButtons.size()> kSummonActionPaths = {{
+    {keyboard::ControllerButton::LeftGrip, "/actions/keyboard/in/LeftGrip"},
+    {keyboard::ControllerButton::LeftTrigger, "/actions/keyboard/in/LeftTrigger"},
+    {keyboard::ControllerButton::LeftA, "/actions/keyboard/in/LeftA"},
+    {keyboard::ControllerButton::LeftB, "/actions/keyboard/in/LeftB"},
+    {keyboard::ControllerButton::LeftMenu, "/actions/keyboard/in/LeftMenu"},
+    {keyboard::ControllerButton::LeftJoystick, "/actions/keyboard/in/LeftJoystick"},
+    {keyboard::ControllerButton::LeftTrackpad, "/actions/keyboard/in/LeftTrackpad"},
+    {keyboard::ControllerButton::RightGrip, "/actions/keyboard/in/RightGrip"},
+    {keyboard::ControllerButton::RightTrigger, "/actions/keyboard/in/RightTrigger"},
+    {keyboard::ControllerButton::RightA, "/actions/keyboard/in/RightA"},
+    {keyboard::ControllerButton::RightB, "/actions/keyboard/in/RightB"},
+    {keyboard::ControllerButton::RightMenu, "/actions/keyboard/in/RightMenu"},
+    {keyboard::ControllerButton::RightJoystick, "/actions/keyboard/in/RightJoystick"},
+    {keyboard::ControllerButton::RightTrackpad, "/actions/keyboard/in/RightTrackpad"},
+}};
 
 void setError(std::string *error, const char *operation, vr::EVRInputError result) {
     if (error) {
@@ -19,6 +42,7 @@ void setError(std::string *error, const char *operation, vr::EVRInputError resul
 bool SteamVrActionSource::initialize(const std::string &absoluteManifestPath,
                                      ToggleCallback toggleCallback,
                                      PointerCallback pointerCallback,
+                                     SummonButtonsCallback summonButtonsCallback,
                                      std::string *error) {
     shutdown();
     m_input = vr::VRInput();
@@ -60,6 +84,15 @@ bool SteamVrActionSource::initialize(const std::string &absoluteManifestPath,
         shutdown();
         return false;
     }
+    // 옵션에서 선택할 수 있는 각 논리 버튼의 액션 handle을 시작 시 한 번만 조회한다.
+    for (std::size_t index = 0; index < kSummonActionPaths.size(); ++index) {
+        result = m_input->GetActionHandle(kSummonActionPaths[index].path, &m_summonButtonActions[index]);
+        if (result != vr::VRInputError_None) {
+            setError(error, "GetActionHandle(controller summon button)", result);
+            shutdown();
+            return false;
+        }
+    }
     result = m_input->GetInputSourceHandle("/user/hand/left", &m_leftHandSource);
     if (result != vr::VRInputError_None) {
         setError(error, "GetInputSourceHandle(left hand)", result);
@@ -75,6 +108,7 @@ bool SteamVrActionSource::initialize(const std::string &absoluteManifestPath,
 
     m_toggleCallback = std::move(toggleCallback);
     m_pointerCallback = std::move(pointerCallback);
+    m_summonButtonsCallback = std::move(summonButtonsCallback);
     m_initialized = true;
     return true;
 }
@@ -82,11 +116,13 @@ bool SteamVrActionSource::initialize(const std::string &absoluteManifestPath,
 void SteamVrActionSource::shutdown() {
     m_toggleCallback = {};
     m_pointerCallback = {};
+    m_summonButtonsCallback = {};
     m_input = nullptr;
     m_actionSet = vr::k_ulInvalidActionSetHandle;
     m_toggleAction = vr::k_ulInvalidActionHandle;
     m_pointerPoseAction = vr::k_ulInvalidActionHandle;
     m_pointerClickAction = vr::k_ulInvalidActionHandle;
+    m_summonButtonActions.fill(vr::k_ulInvalidActionHandle);
     m_leftHandSource = vr::k_ulInvalidInputValueHandle;
     m_rightHandSource = vr::k_ulInvalidInputValueHandle;
     m_initialized = false;
@@ -121,6 +157,29 @@ bool SteamVrActionSource::poll(std::string *error) {
     // bChanged와 눌림 상태를 함께 확인해 버튼을 누르고 있는 동안 토글이 반복되지 않게 한다.
     if (actionData.bActive && actionData.bState && actionData.bChanged && m_toggleCallback) {
         m_toggleCallback();
+    }
+
+    if (m_summonButtonsCallback) {
+        const vr::VRInputValueHandle_t sources[] = {m_leftHandSource, m_rightHandSource};
+        std::vector<keyboard::ControllerButtonState> buttonStates;
+        buttonStates.reserve(kSummonActionPaths.size());
+        for (std::size_t index = 0; index < kSummonActionPaths.size(); ++index) {
+            const bool rightHand = index >= kSummonActionPaths.size() / 2;
+            const vr::VRInputValueHandle_t source = sources[rightHand ? 1 : 0];
+            vr::InputDigitalActionData_t buttonData{};
+            result = m_input->GetDigitalActionData(m_summonButtonActions[index],
+                                                   &buttonData,
+                                                   sizeof(buttonData),
+                                                   source);
+            if (result != vr::VRInputError_None) {
+                setError(error, "GetDigitalActionData(controller summon button)", result);
+                return false;
+            }
+            buttonStates.push_back({kSummonActionPaths[index].button,
+                                    buttonData.bActive,
+                                    buttonData.bActive && buttonData.bState});
+        }
+        m_summonButtonsCallback(buttonStates);
     }
 
     if (m_pointerCallback) {

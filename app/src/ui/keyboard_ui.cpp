@@ -1,5 +1,7 @@
 #include "keyboard_ui.h"
 
+#include "ui_text_catalog.h"
+
 #include <imgui.h>
 
 #include <algorithm>
@@ -37,9 +39,13 @@ int mouseButtonIndex(keyboard::PointerButton button) {
     }
 }
 
+const char *localized(keyboard::UiLanguage language, keyboard::ui_text::TextId id) {
+    return keyboard::ui_text::text(language, id);
+}
 }
 
-KeyboardUi::KeyboardUi(keyboard::KeyboardActions &actions) : m_actions(actions) {
+KeyboardUi::KeyboardUi(keyboard::KeyboardActions &actions)
+    : m_actions(actions), m_settingsUi(actions, m_inputSession) {
     addImeFonts();
     ImGuiStyle &style = ImGui::GetStyle();
     style.WindowPadding = ImVec2(18.0f, 14.0f);
@@ -70,6 +76,7 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
     }
 
     const ImGuiIO &io = ImGui::GetIO();
+    const keyboard::UiLanguage language = state.settings.uiLanguage;
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
     constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoTitleBar |
@@ -80,11 +87,16 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
     ImGui::Begin("VR Overlay Keyboard##main", nullptr, windowFlags);
     ImGui::BeginChild("main-content", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None);
 
-    ImGui::Text("VR Overlay Keyboard");
-    ImGui::TextWrapped("Type with the active Windows IME. Bind SteamVR toggle, pointer pose, and click actions to use the overlay in VR.");
+    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::WindowTitle));
+    ImGui::SameLine();
+    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::OpenOptions),
+                              ImVec2(130.0f, 34.0f))) {
+        m_actions.setOptionsOpen(!state.optionsOpen);
+    }
+    ImGui::TextWrapped("%s", localized(language, keyboard::ui_text::TextId::Intro));
     ImGui::Separator();
 
-    ImGui::TextUnformatted("Chatbox text");
+    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::ChatboxText));
     const ImGuiInputSession::EditorInteraction editor = m_inputSession.drawEditor(
         "##chatbox-text", m_text, ImVec2(-1.0f, 90.0f),
         applicationIsForeground || m_focusEditorNextFrame);
@@ -104,16 +116,19 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
 
     ImGui::Spacing();
     ImGui::BeginGroup();
-    if (m_inputSession.button("Focus input", ImVec2(150.0f, 42.0f))) {
+    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::FocusInput), ImVec2(150.0f, 42.0f))) {
         requestEditorFocus();
     }
     ImGui::SameLine();
-    const char *toggleLabel = state.overlayVisible ? "Hide keyboard overlay" : "Show keyboard overlay";
+    const bool overlayVisible = state.overlayVisible;
+    const char *toggleLabel = localized(language, overlayVisible
+        ? keyboard::ui_text::TextId::HideOverlay
+        : keyboard::ui_text::TextId::ShowOverlay);
     if (m_inputSession.button(toggleLabel, ImVec2(210.0f, 42.0f))) {
-        m_actions.toggleOverlay();
+        overlayVisible ? m_actions.hideOverlay() : m_actions.showOverlay();
     }
     ImGui::SameLine();
-    if (m_inputSession.button("Clear input", ImVec2(150.0f, 42.0f))) {
+    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::ClearInput), ImVec2(150.0f, 42.0f))) {
         m_submitAfterComposition = false;
         if (m_compositionCancelCallback) {
             m_compositionCancelCallback();
@@ -122,7 +137,7 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         appendLog("Editor cleared.");
     }
     ImGui::SameLine();
-    if (m_inputSession.button("Fill VRChat Chatbox", ImVec2(210.0f, 42.0f))) {
+    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::FillChatbox), ImVec2(210.0f, 42.0f))) {
         if (state.composition.active) {
             // 변환 중이면 Enter를 IME에 보내고, 다음 프레임부터 조합 종료와 편집 버퍼 반영을 기다린다.
             m_submitAfterComposition = m_editorFocusArmed &&
@@ -134,17 +149,24 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
     ImGui::EndGroup();
 
     ImGui::Spacing();
-    ImGui::TextWrapped("Status: %s", state.status.c_str());
-    ImGui::Text("Windows foreground: %s  |  Editor focus: %s",
-                m_applicationIsForeground ? "this app" : "another app",
-                m_editorFocusArmed ? "ready" : "not selected");
+    ImGui::TextWrapped("%s: %s", localized(language, keyboard::ui_text::TextId::Status), state.status.c_str());
+    ImGui::Text("%s: %s  |  %s: %s",
+                localized(language, keyboard::ui_text::TextId::WindowsForeground),
+                localized(language, m_applicationIsForeground
+                    ? keyboard::ui_text::TextId::ThisApp
+                    : keyboard::ui_text::TextId::AnotherApp),
+                localized(language, keyboard::ui_text::TextId::EditorFocus),
+                localized(language, m_editorFocusArmed
+                    ? keyboard::ui_text::TextId::Ready
+                    : keyboard::ui_text::TextId::NotSelected));
 
     ImGui::Spacing();
-    drawInputLanguages(state.inputLanguages);
-    drawCandidates(state.candidates, state.composition);
-    drawKeyboard();
+    drawInputLanguages(state.inputLanguages, language);
+    drawCandidates(state.candidates, state.composition, language);
+    drawKeyboard(language);
 
-    if (m_inputSession.button("Input diagnostics", ImVec2(-FLT_MIN, 28.0f))) {
+    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::InputDiagnostics),
+                              ImVec2(-FLT_MIN, 28.0f))) {
         m_diagnosticsExpanded = !m_diagnosticsExpanded;
     }
     if (m_diagnosticsExpanded) {
@@ -161,6 +183,8 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
 
     ImGui::EndChild();
     ImGui::End();
+    // 옵션 창도 같은 ImGui 프레임에 그려 데스크톱과 OpenVR 오버레이에 함께 보낸다.
+    m_settingsUi.draw(state);
     m_inputSession.endFrame();
 }
 
@@ -248,19 +272,24 @@ void KeyboardUi::appendLog(std::string message) {
     }
 }
 
-void KeyboardUi::drawInputLanguages(const std::vector<keyboard::InputLanguage> &languages) {
-    ImGui::TextUnformatted("Windows input language");
+void KeyboardUi::drawInputLanguages(const std::vector<keyboard::InputLanguage> &languages,
+                                   keyboard::UiLanguage uiLanguage) {
+    ImGui::TextUnformatted(localized(uiLanguage, keyboard::ui_text::TextId::WindowsInputLanguage));
     const auto activeLanguage = std::find_if(languages.begin(), languages.end(), [](const keyboard::InputLanguage &language) {
         return language.active;
     });
     if (activeLanguage == languages.end()) {
-        ImGui::TextUnformatted("Current input language: detecting...");
+        ImGui::Text("%s: %s",
+                    localized(uiLanguage, keyboard::ui_text::TextId::CurrentInputLanguage),
+                    localized(uiLanguage, keyboard::ui_text::TextId::Detecting));
     } else {
-        ImGui::Text("Current input language: %s", activeLanguage->label.c_str());
+        ImGui::Text("%s: %s",
+                    localized(uiLanguage, keyboard::ui_text::TextId::CurrentInputLanguage),
+                    activeLanguage->label.c_str());
     }
 
     if (languages.empty()) {
-        ImGui::TextUnformatted("No loaded Windows input languages were found.");
+        ImGui::TextWrapped("%s", localized(uiLanguage, keyboard::ui_text::TextId::NoInputLanguages));
         return;
     }
     if (!ImGui::BeginTable("input-languages", 3, ImGuiTableFlags_SizingStretchSame)) {
@@ -285,7 +314,8 @@ void KeyboardUi::drawInputLanguages(const std::vector<keyboard::InputLanguage> &
 }
 
 void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
-                                const keyboard::CompositionSnapshot &composition) {
+                                const keyboard::CompositionSnapshot &composition,
+                                keyboard::UiLanguage uiLanguage) {
     const std::string signature = candidateSignature(snapshot);
     if (signature != m_candidateSignature) {
         m_candidateSignature = signature;
@@ -295,7 +325,7 @@ void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
         }
     }
     ImGui::Separator();
-    ImGui::TextUnformatted("IME conversion preview / candidates");
+    ImGui::TextUnformatted(localized(uiLanguage, keyboard::ui_text::TextId::ImePreviewCandidates));
     // 후보가 나타나거나 사라져도 키보드 위치가 바뀌지 않도록 고정 높이를 항상 확보한다.
     if (m_candidateScrollRequested) {
         ImGui::SetNextWindowScroll(ImVec2(m_candidateScrollX, 0.0f));
@@ -307,13 +337,15 @@ void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
                       ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollbar);
     if (composition.active) {
         // 일본어 단어를 변환하는 동안의 문자열은 고정 영역에 표시하고 확정 편집 문자열과 섞지 않는다.
-        ImGui::TextUnformatted(composition.preedit.empty() ? "Composing..." : composition.preedit.c_str());
+        ImGui::TextUnformatted(composition.preedit.empty()
+            ? localized(uiLanguage, keyboard::ui_text::TextId::Composing)
+            : composition.preedit.c_str());
     } else {
-        ImGui::TextDisabled("IME composition preview");
+        ImGui::TextDisabled("%s", localized(uiLanguage, keyboard::ui_text::TextId::ImeCompositionPreview));
     }
     ImGui::Separator();
     if (!snapshot.active || snapshot.candidates.empty()) {
-        ImGui::TextDisabled("IME candidates appear here when available.");
+        ImGui::TextDisabled("%s", localized(uiLanguage, keyboard::ui_text::TextId::ImeCandidatesAppear));
     }
     // 후보는 한 줄로 두고, 별도 가로 스크롤바가 편집창 포커스를 보존하며 위치만 바꾼다.
     const std::size_t candidateCount = snapshot.active ? snapshot.candidates.size() : 0;
@@ -338,10 +370,10 @@ void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
         "##candidate-scroll", ImVec2(-FLT_MIN, 14.0f), maxScroll, visibleWidth, m_candidateScrollX);
 }
 
-void KeyboardUi::drawKeyboard() {
+void KeyboardUi::drawKeyboard(keyboard::UiLanguage uiLanguage) {
     ImGui::Separator();
-    ImGui::TextUnformatted("Keyboard");
-    ImGui::TextWrapped("Korean composition and IME candidates still need validation with the target Windows input methods.");
+    ImGui::TextUnformatted(localized(uiLanguage, keyboard::ui_text::TextId::Keyboard));
+    ImGui::TextWrapped("%s", localized(uiLanguage, keyboard::ui_text::TextId::ImeValidationWarning));
 
     const char *rows[] = {"QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
     for (std::size_t row = 0; row < std::size(rows); ++row) {
@@ -368,32 +400,35 @@ void KeyboardUi::drawKeyboard() {
     }
 
     ImGui::Spacing();
-    if (m_inputSession.button(m_shiftForNextKey ? "Shift (on)" : "Shift", ImVec2(120.0f, kKeyHeight))) {
+    const char *shiftLabel = localized(uiLanguage, m_shiftForNextKey
+        ? keyboard::ui_text::TextId::ShiftOn
+        : keyboard::ui_text::TextId::Shift);
+    if (m_inputSession.button(shiftLabel, ImVec2(120.0f, kKeyHeight))) {
         m_shiftForNextKey = !m_shiftForNextKey;
     }
     ImGui::SameLine();
-    if (m_inputSession.button("Backspace", ImVec2(150.0f, kKeyHeight))) {
+    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Backspace), ImVec2(150.0f, kKeyHeight))) {
         sendKey(keyboard::KeyCode::Backspace);
     }
     ImGui::SameLine();
-    if (m_inputSession.button("한글 모드", ImVec2(130.0f, kKeyHeight))) {
+    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::KoreanMode), ImVec2(130.0f, kKeyHeight))) {
         sendKey(keyboard::KeyCode::HangulMode);
     }
     ImGui::SameLine();
-    if (m_inputSession.button("Space", ImVec2(170.0f, kKeyHeight))) {
+    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Space), ImVec2(170.0f, kKeyHeight))) {
         sendKey(keyboard::KeyCode::Space);
     }
     ImGui::SameLine();
-    if (m_inputSession.button("Enter", ImVec2(120.0f, kKeyHeight))) {
+    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Enter), ImVec2(120.0f, kKeyHeight))) {
         sendKey(keyboard::KeyCode::Enter);
     }
     ImGui::SameLine();
-    if (m_inputSession.button("かな", ImVec2(90.0f, kKeyHeight))) {
+    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Hiragana), ImVec2(90.0f, kKeyHeight))) {
         sendKey(keyboard::KeyCode::JapaneseHiraganaMode);
         appendLog("Requested Japanese Hiragana mode.");
     }
     ImGui::SameLine();
-    if (m_inputSession.button("漢字", ImVec2(90.0f, kKeyHeight))) {
+    if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Kanji), ImVec2(90.0f, kKeyHeight))) {
         sendKey(keyboard::KeyCode::JapaneseKanjiMode);
     }
 }

@@ -56,13 +56,22 @@ target_link_libraries(dear_imgui PUBLIC OpenGL::GL dwmapi)
 add_library(app_core STATIC
     src/core/keyboard_application.cpp
     src/core/keyboard_application.h
+    src/core/controller_summon_trigger.cpp
+    src/core/controller_summon_trigger.h
     src/core/app_contracts.h
 )
 target_include_directories(app_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+if(MSVC)
+    target_compile_options(app_core PRIVATE /utf-8)
+endif()
 
 add_library(keyboard_ui STATIC
     src/ui/keyboard_ui.cpp
     src/ui/keyboard_ui.h
+    src/ui/settings_ui.cpp
+    src/ui/settings_ui.h
+    src/ui/ui_text_catalog.cpp
+    src/ui/ui_text_catalog.h
     src/ui/imgui_input_session.cpp
     src/ui/imgui_input_session.h
 )
@@ -104,6 +113,17 @@ add_library(windows_input_language STATIC
 )
 target_link_libraries(windows_input_language PUBLIC app_core)
 
+add_library(windows_settings_store STATIC
+    src/platform/windows/settings_store.cpp
+    src/platform/windows/settings_store.h
+)
+target_include_directories(windows_settings_store PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_compile_definitions(windows_settings_store PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(windows_settings_store PUBLIC app_core)
+if(MSVC)
+    target_compile_options(windows_settings_store PRIVATE /utf-8)
+endif()
+
 add_library(windows_virtual_key_sender STATIC
     src/platform/windows/virtual_key_sender.cpp
     src/platform/windows/virtual_key_sender.h
@@ -141,6 +161,7 @@ target_link_libraries(vr-overlay-keyboard PRIVATE
     steamvr_action_input
     openvr_overlay_adapter
     windows_input_language
+    windows_settings_store
     windows_virtual_key_sender
     windows_tsf_input
     chatbox_osc

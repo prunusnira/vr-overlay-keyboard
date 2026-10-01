@@ -2,6 +2,7 @@
 
 #include "../core/app_contracts.h"
 #include "imgui_input_session.h"
+#include "settings_ui.h"
 
 #include <functional>
 #include <string>
@@ -25,14 +26,17 @@ private:
     void requestEditorFocus();
     void sendKey(keyboard::KeyCode key, bool withShift = false);
     void appendLog(std::string message);
-    void drawInputLanguages(const std::vector<keyboard::InputLanguage> &languages);
+    void drawInputLanguages(const std::vector<keyboard::InputLanguage> &languages,
+                            keyboard::UiLanguage uiLanguage);
     void drawCandidates(const keyboard::CandidateSnapshot &snapshot,
-                        const keyboard::CompositionSnapshot &composition);
-    void drawKeyboard();
+                        const keyboard::CompositionSnapshot &composition,
+                        keyboard::UiLanguage uiLanguage);
+    void drawKeyboard(keyboard::UiLanguage uiLanguage);
     void addImeFonts();
 
     keyboard::KeyboardActions &m_actions;
     ImGuiInputSession m_inputSession;
+    SettingsUi m_settingsUi;
     FocusRequestCallback m_focusRequestCallback;
     std::function<void()> m_compositionCancelCallback;
     std::string m_text;

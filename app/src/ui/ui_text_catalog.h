@@ -1,0 +1,60 @@
+#pragma once
+
+#include "core/app_contracts.h"
+
+namespace keyboard::ui_text {
+
+enum class TextId {
+    WindowTitle,
+    Intro,
+    ChatboxText,
+    FocusInput,
+    ShowOverlay,
+    HideOverlay,
+    ClearInput,
+    FillChatbox,
+    OpenOptions,
+    Status,
+    WindowsForeground,
+    EditorFocus,
+    ThisApp,
+    AnotherApp,
+    Ready,
+    NotSelected,
+    WindowsInputLanguage,
+    CurrentInputLanguage,
+    Detecting,
+    NoInputLanguages,
+    ImePreviewCandidates,
+    Composing,
+    ImeCompositionPreview,
+    ImeCandidatesAppear,
+    Keyboard,
+    ImeValidationWarning,
+    Shift,
+    ShiftOn,
+    Backspace,
+    KoreanMode,
+    Space,
+    Enter,
+    Hiragana,
+    Kanji,
+    InputDiagnostics,
+    OptionsTitle,
+    Close,
+    AppLanguage,
+    SummonButtons,
+    HoldDuration,
+    HoldRange,
+    AtLeastOneButton,
+    BindingsMissing,
+    BindingsReady,
+    BindingInstructions,
+    Count,
+};
+
+const char *text(UiLanguage language, TextId id);
+const char *languageName(UiLanguage language);
+std::string controllerButtonLabel(UiLanguage language, ControllerButton button);
+
+} // namespace keyboard::ui_text

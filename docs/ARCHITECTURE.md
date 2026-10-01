@@ -1,6 +1,6 @@
 # 모듈 아키텍처와 오버레이 실행 흐름
 
-상태: `app/`에 Dear ImGui 기반 Windows 앱을 구현했고 Windows x64 Release 빌드를 확인했다. UI는 Win32 platform backend와 OpenGL3 renderer를 사용하고, Win32/OpenGL host가 만든 RGBA 프레임을 OpenVR 어댑터에 전달한다. Windows IME·SteamVR HMD 동작은 별도 확인이 필요하다. `prototype/windows-ime-overlay` 코드는 수정하거나 제품 앱으로 옮기지 않는다. 프로토타입에서 확인된 사용자 흐름은 제품 앱의 동작 기준으로 삼는다.
+상태: `app/`에 Dear ImGui 기반 Windows 앱을 구현했고 Windows x64 Release 빌드를 확인했다. UI는 Win32 platform backend와 OpenGL3 renderer를 사용하고, Win32/OpenGL host가 만든 RGBA 프레임을 OpenVR 어댑터에 전달한다. 앱 UI 언어, 사용자 설정 저장, SteamVR 컨트롤러 소환 조합과 옵션 창을 추가했다. Windows IME·SteamVR HMD 동작은 별도 확인이 필요하다. `prototype/windows-ime-overlay` 코드는 수정하거나 제품 앱으로 옮기지 않는다. 프로토타입에서 확인된 사용자 흐름은 제품 앱의 동작 기준으로 삼는다.
 
 ## 목표
 
@@ -10,7 +10,7 @@ SteamVR 대시보드를 열지 않고 VR 사용 중 정해둔 커맨드로 키�
 
 제품 앱은 `app/`의 독립 CMake 프로젝트이며 UI와 렌더링은 Dear ImGui, Win32, OpenGL3로 구현한다. 프로토타입 코드를 이동·리팩터링하거나 제품 앱의 소스로 직접 편입하지 않는다. 프로토타입에서 확인한 대시보드 안의 컨트롤러 포인터 입력, 입력 언어 전환, 일본어 모드 전환, VRChat Chatbox OSC 흐름을 제품 앱에 새 모듈 경계와 일반 오버레이 사용 방식으로 다시 구성했다. 기존 동작이 확인됐다는 사실은 대시보드 없는 토글이나 미검증 IME 동작까지 확인됐다는 뜻은 아니다.
 
-오버레이 토글은 SteamVR Input의 `ToggleKeyboard` 디지털 액션으로 받는다. 컨트롤러를 확정하기 전까지 기본 바인딩은 제공하지 않으며, 사용자는 SteamVR 입력 설정에서 토글·포인터 자세·클릭 액션을 바인딩해야 한다. 전역 단축키나 외부 프로세스 명령은 같은 앱 커맨드를 호출하는 추가 입력 어댑터로 나중에 붙일 수 있다. [Valve SteamVR Input 문서](https://github.com/ValveSoftware/openvr/wiki/SteamVR-Input)
+기존 오버레이 토글은 SteamVR Input의 `ToggleKeyboard` 디지털 액션으로 받는다. 별도로 좌우 Grip·Trigger·A·B·Menu·Joystick·Trackpad 액션을 읽으며, 옵션의 기본 소환 조합은 `RightGrip + RightB`, 유지시간은 `0ms`다. 소환 조합은 숨겨진 오버레이를 표시하고, 버튼을 놓기 전에는 다시 발화하지 않는다. 컨트롤러를 확정하기 전까지 물리 입력 기본 바인딩은 제공하지 않으며 사용자는 SteamVR 입력 설정에서 토글·포인터·선택한 소환 버튼을 연결해야 한다. 전역 단축키나 외부 프로세스 명령은 같은 앱 커맨드를 호출하는 추가 입력 어댑터로 나중에 붙일 수 있다. [Valve SteamVR Input 문서](https://github.com/ValveSoftware/openvr/wiki/SteamVR-Input)
 
 ## VR에서 바로 표시하기
 
@@ -21,19 +21,20 @@ SteamVR 대시보드를 열지 않고 VR 사용 중 정해둔 커맨드로 키�
 권장 표시 흐름은 다음과 같다.
 
 1. 앱이 SteamVR에 연결되면 일반 오버레이를 생성하고 시작 상태를 숨김으로 둔다.
-2. SteamVR Input의 `ToggleKeyboard`, `ControllerPose`, `PointerClick` 액션을 계속 확인한다.
-3. 액션이 들어오면 키보드를 HMD 앞에 놓고 `ShowOverlay`를 호출한다. 이미 표시 중이면 `HideOverlay`를 호출한다.
-4. 표시 중에는 컨트롤러 자세의 광선을 일반 오버레이와 교차시켜 UI 좌표를 구하고, 클릭 상태와 함께 키보드 UI에 포인터 이벤트를 전달한다.
+2. SteamVR Input의 토글·포인터·좌우 소환 버튼 액션을 계속 확인한다.
+3. 기존 `ToggleKeyboard`는 표시와 숨김을 전환한다. 설정한 소환 버튼 조합은 모든 버튼을 동시에 누른 뒤 설정한 홀드 시간이 지나면 숨겨진 키보드를 표시하며, 0초는 첫 동시 입력 갱신에서 발화한다.
+4. 표시 중에는 컨트롤러 자세의 광선을 일반 오버레이와 교차시켜 UI 좌표를 구하고, 클릭 상태와 함께 키보드 UI에 포인터 이벤트를 전달한다. 키보드 화면의 숨김 버튼은 오버레이만 감춘다.
 
-현재 manifest에는 기본 컨트롤러 바인딩이 없다. 지원 기기를 정한 뒤 기본값을 추가할 수 있으며, 그 전에는 SteamVR 입력 설정에서 세 액션을 직접 연결해야 한다. 일반 사용 흐름에서 키보드를 열고 닫을 때마다 대시보드를 열 필요는 없다. 제품 앱의 일반 오버레이 포인터 조작과 `ToggleKeyboard` 액션 수신은 HMD에서 확인해야 한다.
+현재 manifest에는 기본 컨트롤러 바인딩이 없다. 지원 기기를 정하기 전에는 기존 세 액션과 옵션에서 선택한 소환 버튼 액션을 SteamVR 입력 설정에서 직접 연결해야 한다. 옵션 창은 키보드와 같은 ImGui 프레임에 그리므로 데스크톱과 단일 OpenVR 오버레이 이미지에 함께 표시된다. 일반 사용 흐름에서 키보드를 열고 닫을 때마다 대시보드를 열 필요는 없다. 제품 앱의 소환 조합, 일반 오버레이 포인터 조작과 토글 액션 수신은 HMD에서 확인해야 한다.
 
 ## 모듈 구성
 
 | 모듈 | 책임 | 의존하지 않을 대상 |
 | --- | --- | --- |
-| `app_core` | `ToggleKeyboard`, `SubmitText` 같은 앱 커맨드와 현재 세션 상태를 조정한다. | UI 프레임워크, OpenVR, Win32, OSC 구현 |
-| `steamvr_action_input` | SteamVR Input 토글·포인터 액션을 앱 커맨드와 컨트롤러 포인터 샘플로 바꾼다. 추후 전역 단축키나 IPC 입력도 같은 경계에 추가한다. | 오버레이 렌더링, IME 구현 |
-| `keyboard_ui` | Dear ImGui로 입력란, 키, 후보, 언어 선택과 상태를 그린다. 후보 영역은 고정 높이의 가로 스크롤로 유지한다. 사용자 동작을 앱 계약으로 내보내고 오버레이 포인터 입력을 ImGuiIO 이벤트로 받는다. | TSF, Win32, OpenVR, UDP 구현 |
+| `app_core` | 오버레이 표시·숨김, 설정 적용·저장, 사용자 상태와 `ControllerSummonTrigger`의 동시 누름·홀드 판정을 조정한다. | UI 프레임워크, OpenVR, Win32, OSC 구현 |
+| `steamvr_action_input` | SteamVR Input 토글·포인터 액션과 좌우 14개 논리 버튼 액션을 앱 커맨드 및 컨트롤러 포인터·버튼 샘플로 바꾼다. | 오버레이 렌더링, IME 구현 |
+| `keyboard_ui` | Dear ImGui로 입력란, 키, 후보, 입력 언어, 현지화된 앱 UI와 옵션 창을 그린다. 후보 영역은 고정 높이의 가로 스크롤로 유지한다. 사용자 동작을 앱 계약으로 내보내고 오버레이 포인터 입력을 ImGuiIO 이벤트로 받는다. | TSF, Win32, OpenVR, UDP 구현 |
+| `ui/settings_ui` | 언어·소환 버튼 조합·유지시간을 편집하는 별도 ImGui 창을 그린다. 키보드와 같은 입력 세션을 사용해 편집 포커스를 보존하고 같은 렌더 프레임에 포함한다. | Windows 설정 파일, SteamVR, OpenVR |
 | `ui/imgui_input_session` | 편집창과 가상 버튼의 포인터 이벤트를 분리하고, 같은 버튼에서 뗐을 때 한 번 동작을 실행한다. 후보 스크롤도 편집창 포커스를 유지한다. `keyboard_ui` 타깃 안의 별도 UI 모듈이다. | Windows 전경 전환, SendInput, TSF 구현 |
 | `platform/windows/ime_composition` | IMM 메시지의 조합 문자열과 확정 문자열을 분리한다. 조합 문자열은 앱 snapshot으로 내보내고 확정 문자열만 편집 입력 큐에 전달한다. `win32_imgui_host` 타깃 안의 별도 Windows 모듈이다. | ImGui 위젯, TSF 후보 선택, OSC |
 | `platform/windows/virtual_mouse_router` | 앱 UI 스레드에 한정된 마우스 훅으로 한국어 가상 버튼 클릭을 공용 포인터 이벤트로 전환한다. 편집창 선택은 일반 입력으로 남기고, 창 밖에서 놓친 뗌/앱 비활성화는 취소한다. | ImGui 위젯, IME 문자열 조합 규칙, OpenVR |
@@ -43,10 +44,11 @@ SteamVR 대시보드를 열지 않고 VR 사용 중 정해둔 커맨드로 키�
 | `openvr_overlay` | 일반 오버레이의 생성·종료, 위치, 표시 상태, 이미지 전달과 컨트롤러 포인터 입력을 처리한다. | 언어, TSF, Chatbox |
 | `chatbox_osc` | Chatbox 목적 주소와 OSC 패킷을 처리해 문장을 전송한다. | 키보드 UI, OpenVR |
 | `settings_and_diagnostics` | 사용자 설정과 진단 로그를 관리한다. 초기 버전은 작은 구성 요소로 시작해도 된다. | 특정 화면 구성 |
+| `platform/windows/settings_store` | `%LOCALAPPDATA%`의 설정 파일을 읽고 원자적으로 저장한다. UI 언어와 컨트롤러 버튼 조합, 0~3000ms 유지 시간을 검증한다. | ImGui, OpenVR |
 | `dear_imgui` | 고정한 Dear ImGui 버전과 Win32/OpenGL3 공식 backend를 정적 타깃으로 제공한다. | 앱의 OpenVR·IME 서비스 |
 | `win32_imgui_host` | Win32 창, WGL 컨텍스트, backend 수명, 프레임 렌더링과 RGBA readback을 관리한다. | 앱 커맨드, TSF, OSC |
 
-현재 CMake는 위 책임 중 구현된 항목을 정적 라이브러리 타깃으로 나누고 `vr-overlay-keyboard` 실행 파일에서 조립한다. 설정·진단은 UI와 앱 상태에 아직 포함되어 있으며, 별도 프로세스나 플러그인 구조는 필요가 확인된 뒤 결정한다.
+현재 CMake는 위 책임 중 구현된 항목을 정적 라이브러리 타깃으로 나누고 `vr-overlay-keyboard` 실행 파일에서 조립한다. Windows 설정 저장 어댑터는 플랫폼 경계로 분리하고, 검증과 홀드 판정은 앱 코어에 둔다. 별도 프로세스나 플러그인 구조는 필요가 확인된 뒤 결정한다.
 
 ### 컴파일 의존성
 
@@ -60,6 +62,7 @@ flowchart TB
     Trigger[steamvr_action_input]
     Text[Windows 텍스트 입력 어댑터]
     Language[Windows 언어 어댑터]
+    Settings[Windows 설정 저장소]
     Overlay[OpenVR 오버레이 어댑터]
     OSC[Chatbox OSC 어댑터]
     UI --> Core
@@ -76,6 +79,7 @@ flowchart TB
     App --> Trigger
     App --> Text
     App --> Language
+    App --> Settings
     App --> Overlay
     App --> OSC
 ```

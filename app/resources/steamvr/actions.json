@@ -15,6 +15,76 @@
       "name": "/actions/keyboard/in/PointerClick",
       "requirement": "optional",
       "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/LeftGrip",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/LeftTrigger",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/LeftA",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/LeftB",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/LeftMenu",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/LeftJoystick",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/LeftTrackpad",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/RightGrip",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/RightTrigger",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/RightA",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/RightB",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/RightMenu",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/RightJoystick",
+      "requirement": "optional",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/RightTrackpad",
+      "requirement": "optional",
+      "type": "boolean"
     }
   ],
   "action_sets": [
@@ -29,14 +99,63 @@
       "/actions/keyboard": "Keyboard",
       "/actions/keyboard/in/ToggleKeyboard": "Toggle Keyboard",
       "/actions/keyboard/in/ControllerPose": "Controller Pointer Pose",
-      "/actions/keyboard/in/PointerClick": "Controller Pointer Click"
+      "/actions/keyboard/in/PointerClick": "Controller Pointer Click",
+      "/actions/keyboard/in/LeftGrip": "Left Grip Summon Button",
+      "/actions/keyboard/in/LeftTrigger": "Left Trigger Summon Button",
+      "/actions/keyboard/in/LeftA": "Left A Summon Button",
+      "/actions/keyboard/in/LeftB": "Left B Summon Button",
+      "/actions/keyboard/in/LeftMenu": "Left Menu Summon Button",
+      "/actions/keyboard/in/LeftJoystick": "Left Joystick Summon Button",
+      "/actions/keyboard/in/LeftTrackpad": "Left Trackpad Summon Button",
+      "/actions/keyboard/in/RightGrip": "Right Grip Summon Button",
+      "/actions/keyboard/in/RightTrigger": "Right Trigger Summon Button",
+      "/actions/keyboard/in/RightA": "Right A Summon Button",
+      "/actions/keyboard/in/RightB": "Right B Summon Button",
+      "/actions/keyboard/in/RightMenu": "Right Menu Summon Button",
+      "/actions/keyboard/in/RightJoystick": "Right Joystick Summon Button",
+      "/actions/keyboard/in/RightTrackpad": "Right Trackpad Summon Button"
     },
     {
       "language_tag": "ko_kr",
       "/actions/keyboard": "키보드",
       "/actions/keyboard/in/ToggleKeyboard": "키보드 표시 전환",
       "/actions/keyboard/in/ControllerPose": "컨트롤러 포인터 위치",
-      "/actions/keyboard/in/PointerClick": "컨트롤러 포인터 클릭"
+      "/actions/keyboard/in/PointerClick": "컨트롤러 포인터 클릭",
+      "/actions/keyboard/in/LeftGrip": "왼쪽 Grip 소환 버튼",
+      "/actions/keyboard/in/LeftTrigger": "왼쪽 Trigger 소환 버튼",
+      "/actions/keyboard/in/LeftA": "왼쪽 A 소환 버튼",
+      "/actions/keyboard/in/LeftB": "왼쪽 B 소환 버튼",
+      "/actions/keyboard/in/LeftMenu": "왼쪽 Menu 소환 버튼",
+      "/actions/keyboard/in/LeftJoystick": "왼쪽 조이스틱 소환 버튼",
+      "/actions/keyboard/in/LeftTrackpad": "왼쪽 트랙패드 소환 버튼",
+      "/actions/keyboard/in/RightGrip": "오른쪽 Grip 소환 버튼",
+      "/actions/keyboard/in/RightTrigger": "오른쪽 Trigger 소환 버튼",
+      "/actions/keyboard/in/RightA": "오른쪽 A 소환 버튼",
+      "/actions/keyboard/in/RightB": "오른쪽 B 소환 버튼",
+      "/actions/keyboard/in/RightMenu": "오른쪽 Menu 소환 버튼",
+      "/actions/keyboard/in/RightJoystick": "오른쪽 조이스틱 소환 버튼",
+      "/actions/keyboard/in/RightTrackpad": "오른쪽 트랙패드 소환 버튼"
+    },
+    {
+      "language_tag": "ja_jp",
+      "/actions/keyboard": "キーボード",
+      "/actions/keyboard/in/ToggleKeyboard": "キーボード表示の切り替え",
+      "/actions/keyboard/in/ControllerPose": "コントローラーポインター姿勢",
+      "/actions/keyboard/in/PointerClick": "コントローラーポインタークリック",
+      "/actions/keyboard/in/LeftGrip": "左 Grip 表示ボタン",
+      "/actions/keyboard/in/LeftTrigger": "左 Trigger 表示ボタン",
+      "/actions/keyboard/in/LeftA": "左 A 表示ボタン",
+      "/actions/keyboard/in/LeftB": "左 B 表示ボタン",
+      "/actions/keyboard/in/LeftMenu": "左 Menu 表示ボタン",
+      "/actions/keyboard/in/LeftJoystick": "左スティック表示ボタン",
+      "/actions/keyboard/in/LeftTrackpad": "左トラックパッド表示ボタン",
+      "/actions/keyboard/in/RightGrip": "右 Grip 表示ボタン",
+      "/actions/keyboard/in/RightTrigger": "右 Trigger 表示ボタン",
+      "/actions/keyboard/in/RightA": "右 A 表示ボタン",
+      "/actions/keyboard/in/RightB": "右 B 表示ボタン",
+      "/actions/keyboard/in/RightMenu": "右 Menu 表示ボタン",
+      "/actions/keyboard/in/RightJoystick": "右スティック表示ボタン",
+      "/actions/keyboard/in/RightTrackpad": "右トラックパッド表示ボタン"
     }
   ]
 }

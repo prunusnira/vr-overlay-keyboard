@@ -28,6 +28,66 @@ enum class ControllerHand {
     Right,
 };
 
+// 앱 언어는 Windows 입력 언어와 분리해 키보드 UI와 옵션 문구에만 적용한다.
+enum class UiLanguage : std::uint8_t {
+    Korean,
+    Japanese,
+    English,
+};
+
+// SteamVR 액션에 노출하는 기기 독립 논리 버튼이다. 실제 입력 경로는 사용자가 바인딩한다.
+enum class ControllerButton : std::uint8_t {
+    LeftGrip,
+    LeftTrigger,
+    LeftA,
+    LeftB,
+    LeftMenu,
+    LeftJoystick,
+    LeftTrackpad,
+    RightGrip,
+    RightTrigger,
+    RightA,
+    RightB,
+    RightMenu,
+    RightJoystick,
+    RightTrackpad,
+};
+
+inline constexpr std::array<ControllerButton, 14> kControllerButtons = {
+    ControllerButton::LeftGrip,
+    ControllerButton::LeftTrigger,
+    ControllerButton::LeftA,
+    ControllerButton::LeftB,
+    ControllerButton::LeftMenu,
+    ControllerButton::LeftJoystick,
+    ControllerButton::LeftTrackpad,
+    ControllerButton::RightGrip,
+    ControllerButton::RightTrigger,
+    ControllerButton::RightA,
+    ControllerButton::RightB,
+    ControllerButton::RightMenu,
+    ControllerButton::RightJoystick,
+    ControllerButton::RightTrackpad,
+};
+
+struct ControllerButtonState {
+    ControllerButton button = ControllerButton::LeftGrip;
+    bool active = false;
+    bool pressed = false;
+};
+
+struct AppSettings {
+    UiLanguage uiLanguage = UiLanguage::Korean;
+    std::vector<ControllerButton> summonButtons = {
+        ControllerButton::RightGrip,
+        ControllerButton::RightB,
+    };
+    std::uint32_t summonHoldMilliseconds = 0;
+};
+
+// 저장소와 앱 코어가 같은 규칙으로 사용자 설정을 검증한다.
+bool validateAppSettings(const AppSettings &settings, std::string *error = nullptr);
+
 struct ControllerPointerSample {
     // 광선은 Standing 추적 좌표계의 미터 단위 origin과 방향 벡터다.
     ControllerHand hand = ControllerHand::Right;
@@ -89,7 +149,10 @@ enum class KeyCode : std::uint8_t {
 
 struct AppUiState {
     bool overlayVisible = false;
+    bool optionsOpen = false;
     std::vector<InputLanguage> inputLanguages;
+    std::vector<ControllerButtonState> controllerButtons;
+    AppSettings settings;
     CandidateSnapshot candidates;
     CompositionSnapshot composition;
     std::string status = "Starting VR overlay keyboard.";
@@ -129,11 +192,22 @@ public:
     virtual bool sendChatboxText(const std::string &utf8Text, std::string *error) const = 0;
 };
 
+class SettingsPort {
+public:
+    virtual ~SettingsPort() = default;
+    virtual bool load(AppSettings *settings, std::string *error) = 0;
+    virtual bool save(const AppSettings &settings, std::string *error) = 0;
+};
+
 class KeyboardActions {
 public:
     // UI와 SteamVR 단축 입력이 같은 사용자 동작을 호출하는 공용 경계다.
     virtual ~KeyboardActions() = default;
     virtual bool toggleOverlay() = 0;
+    virtual bool showOverlay() = 0;
+    virtual bool hideOverlay() = 0;
+    virtual bool setOptionsOpen(bool open) = 0;
+    virtual bool applySettings(const AppSettings &settings) = 0;
     virtual bool sendKey(KeyCode key, bool withShift) = 0;
     virtual bool activateInputLanguage(const std::string &languageId) = 0;
     virtual bool selectCandidate(std::uint32_t index) = 0;

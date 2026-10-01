@@ -5,6 +5,7 @@
 #include "overlay/openvr_overlay.h"
 #include "platform/windows/imgui_host.h"
 #include "platform/windows/input_language_service.h"
+#include "platform/windows/settings_store.h"
 #include "platform/windows/virtual_key_sender.h"
 #include "ui/keyboard_ui.h"
 
@@ -13,6 +14,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace {
 constexpr ULONGLONG kTargetFrameIntervalMs = 16;
@@ -84,12 +86,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     // 앱 기능은 계약에 의존하고, 이 진입점에서 Windows·OpenVR·OSC 구현을 연결한다.
     WindowsInputLanguageService languageService;
+    WindowsSettingsStore settingsStore;
     WindowsVirtualKeySender virtualKeySender;
     TsfInput tsfInput;
     OscClient chatboxSender;
     OpenVrOverlay overlay;
     keyboard::KeyboardApplication keyboardApplication(
-        overlay, languageService, virtualKeySender, tsfInput, chatboxSender);
+        overlay, languageService, virtualKeySender, tsfInput, chatboxSender, settingsStore);
     KeyboardUi keyboardUi(keyboardApplication);
 
     keyboardUi.setFocusRequestCallback([&host, &virtualKeySender](std::string *error) {
@@ -143,10 +146,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                     keyboardApplication.toggleOverlay();
                 }, [&overlay](const keyboard::ControllerPointerSamples &samples) {
                     overlay.handleControllerPointers(samples);
+                }, [&keyboardApplication](const std::vector<keyboard::ControllerButtonState> &buttons) {
+                    keyboardApplication.updateControllerButtons(buttons);
                 }, &inputError)) {
                 actionReady = true;
                 keyboardApplication.setStatus(
-                    "SteamVR Input is ready. Bind Toggle Keyboard, Controller Pointer Pose, and Controller Pointer Click.");
+                    "SteamVR Input is ready. Bind keyboard toggle, pointer controls, and the selected summon buttons.");
             } else {
                 keyboardApplication.setStatus("SteamVR Input initialization failed: " + inputError);
             }
