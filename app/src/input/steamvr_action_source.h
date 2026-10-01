@@ -29,6 +29,7 @@ private:
     vr::VRActionHandle_t m_toggleAction = vr::k_ulInvalidActionHandle;
     vr::VRActionHandle_t m_pointerPoseAction = vr::k_ulInvalidActionHandle;
     vr::VRActionHandle_t m_pointerClickAction = vr::k_ulInvalidActionHandle;
+    vr::VRActionHandle_t m_pointerManipulationAction = vr::k_ulInvalidActionHandle;
     std::array<vr::VRActionHandle_t, keyboard::kControllerButtons.size()> m_summonButtonActions{};
     vr::VRInputValueHandle_t m_leftHandSource = vr::k_ulInvalidInputValueHandle;
     vr::VRInputValueHandle_t m_rightHandSource = vr::k_ulInvalidInputValueHandle;

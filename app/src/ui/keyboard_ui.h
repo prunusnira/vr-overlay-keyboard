@@ -48,6 +48,9 @@ private:
     bool m_focusEditorNextFrame = false;
     bool m_shiftForNextKey = false;
     bool m_diagnosticsExpanded = false;
+    bool m_pointerCursorVisible = false;
+    int m_pointerCursorX = -1;
+    int m_pointerCursorY = -1;
     float m_candidateScrollX = 0.0f;
     bool m_candidateScrollRequested = false;
     bool m_submitAfterComposition = false;

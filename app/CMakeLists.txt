@@ -105,7 +105,7 @@ add_library(openvr_overlay_adapter STATIC
     src/overlay/openvr_overlay.h
 )
 target_include_directories(openvr_overlay_adapter PUBLIC "${OPENVR_INCLUDE_DIR}")
-target_link_libraries(openvr_overlay_adapter PUBLIC app_core "${OPENVR_LIBRARY}")
+target_link_libraries(openvr_overlay_adapter PUBLIC app_core OpenGL::GL "${OPENVR_LIBRARY}")
 
 add_library(windows_input_language STATIC
     src/platform/windows/input_language_service.cpp
@@ -168,12 +168,12 @@ target_link_libraries(vr-overlay-keyboard PRIVATE
     ole32
 )
 
-set(STEAMVR_ACTION_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/resources/steamvr/actions.json")
+set(STEAMVR_RESOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/steamvr")
 add_custom_command(TARGET vr-overlay-keyboard POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:vr-overlay-keyboard>/resources/steamvr"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-        "${STEAMVR_ACTION_MANIFEST}"
-        "$<TARGET_FILE_DIR:vr-overlay-keyboard>/resources/steamvr/actions.json"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+        "${STEAMVR_RESOURCES_DIR}"
+        "$<TARGET_FILE_DIR:vr-overlay-keyboard>/resources/steamvr"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
         "$<TARGET_FILE_DIR:vr-overlay-keyboard>/THIRD_PARTY_NOTICES.md"

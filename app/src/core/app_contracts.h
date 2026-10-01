@@ -78,6 +78,11 @@ struct ControllerButtonState {
 
 struct AppSettings {
     UiLanguage uiLanguage = UiLanguage::Korean;
+    // 포인터 조작과 그립 이동에 사용할 손을 사용자 옵션으로 고정한다.
+    ControllerHand pointerHand = ControllerHand::Right;
+    // 포인터의 화면 크기 대비 보정량이다. 양수 X는 오른쪽, 양수 Y는 아래쪽이다.
+    float pointerOffsetXPercent = 0.0f;
+    float pointerOffsetYPercent = 2.4f;
     std::vector<ControllerButton> summonButtons = {
         ControllerButton::RightGrip,
         ControllerButton::RightB,
@@ -93,8 +98,15 @@ struct ControllerPointerSample {
     ControllerHand hand = ControllerHand::Right;
     bool poseActive = false;
     bool selectPressed = false;
+    bool gripPressed = false;
+    // 선택 손 조이스틱의 아날로그 축은 활성 상태와 함께 -1.0~1.0 범위로 전달한다.
+    bool manipulationStickActive = false;
+    float manipulationStickX = 0.0f;
+    float manipulationStickY = 0.0f;
     std::array<float, 3> origin{};
     std::array<float, 3> direction{};
+    // OpenVR SDK 타입을 UI·코어 경계에 노출하지 않도록 3x4 포즈를 행 우선으로 전달한다.
+    std::array<float, 12> deviceToAbsoluteTracking{};
 };
 
 struct ControllerPointerSamples {

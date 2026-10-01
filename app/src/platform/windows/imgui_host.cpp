@@ -109,13 +109,17 @@ bool ImGuiHost::processMessages() {
     return m_running;
 }
 
-void ImGuiHost::beginFrame() {
+void ImGuiHost::beginFrame(const std::function<void()> &pollPointerInput) {
     if (!m_running || !m_glContext) {
         return;
     }
     wglMakeCurrent(m_deviceContext, m_glContext);
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplWin32_NewFrame();
+    // Win32가 넣는 PC 마우스 위치 뒤에 VR 입력을 넣어 보이는 포인터와 실제 클릭 좌표를 일치시킨다.
+    if (pollPointerInput) {
+        pollPointerInput();
+    }
     ImGui::NewFrame();
 }
 

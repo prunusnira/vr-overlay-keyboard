@@ -19,6 +19,8 @@ public:
     EditorInteraction drawEditor(const char *label, std::string &text,
                                  const ImVec2 &size, bool requestFocus);
     bool button(const char *label, const ImVec2 &size, bool selected = false);
+    bool sliderFloat(const char *label, const ImVec2 &size, float &value,
+                     float minimum, float maximum, const char *format);
     bool horizontalScrollbar(const char *label, const ImVec2 &size,
                              float maxScroll, float visibleWidth, float &scroll);
     void clearEditor(std::string &text);
@@ -28,6 +30,7 @@ private:
     ImGuiID m_editorId = 0;
     ImGuiID m_pressedButtonId = 0;
     ImGuiID m_draggedScrollbarId = 0;
+    ImGuiID m_draggedSliderId = 0;
     float m_scrollbarGrabOffset = 0.0f;
     bool m_editorPointerGesture = false;
     // 직전 화면에서 실제로 보인 버튼/스크롤바의 영역만 Windows 포인터 어댑터가 조회한다.

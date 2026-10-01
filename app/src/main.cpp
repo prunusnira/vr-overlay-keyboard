@@ -128,6 +128,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         overlay.setPointerCallback([&keyboardUi](const keyboard::PointerEvent &event) {
             keyboardUi.dispatchPointerEvent(event);
         });
+        overlay.setInteractionStatusCallback([&keyboardApplication](const std::string &message) {
+            keyboardApplication.setStatus(message);
+        });
         keyboardApplication.setStatus("OpenVR general overlay initialized and hidden.");
     } else {
         keyboardApplication.setStatus("OpenVR initialization failed: " + overlayError);
@@ -144,8 +147,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             std::string inputError;
             if (actionSource.initialize(manifestPath.u8string(), [&keyboardApplication]() {
                     keyboardApplication.toggleOverlay();
-                }, [&overlay](const keyboard::ControllerPointerSamples &samples) {
-                    overlay.handleControllerPointers(samples);
+                }, [&overlay, &keyboardApplication](const keyboard::ControllerPointerSamples &samples) {
+                    // 옵션에서 고른 한 손만 포인터 선택과 Grip 이동에 사용한다.
+                    overlay.handleControllerPointers(samples,
+                                                     keyboardApplication.state().settings);
                 }, [&keyboardApplication](const std::vector<keyboard::ControllerButtonState> &buttons) {
                     keyboardApplication.updateControllerButtons(buttons);
                 }, &inputError)) {
@@ -181,13 +186,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     while (host.processMessages()) {
         const ULONGLONG now = GetTickCount64();
-        if (actionReady) {
-            std::string actionError;
-            if (!actionSource.poll(&actionError) && !actionError.empty() && !actionPollErrorReported) {
-                keyboardApplication.setStatus("SteamVR Input polling failed: " + actionError);
-                actionPollErrorReported = true;
-            }
-        }
         // 입력 언어 목록은 짧은 주기로 갱신해 매 프레임 열거하지 않는다.
         if (now - lastLanguageRefresh >= 250) {
             lastLanguageRefresh = now;
@@ -196,7 +194,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         // 전경 전환 직후에도 화면 상태가 늦지 않도록 매 프레임 최신 Windows 상태를 읽는다.
         applicationIsForeground = virtualKeySender.isCurrentProcessForeground();
 
-        host.beginFrame();
+        host.beginFrame([&]() {
+            if (actionReady) {
+                std::string actionError;
+                if (!actionSource.poll(&actionError) && !actionError.empty() && !actionPollErrorReported) {
+                    keyboardApplication.setStatus("SteamVR Input polling failed: " + actionError);
+                    actionPollErrorReported = true;
+                }
+            }
+        });
         // 후보 선택/조합 취소 콜백이 그리는 도중 상태를 갱신해도 현재 화면의 문자열·후보 반복은 안정적으로 유지한다.
         const keyboard::AppUiState uiState = keyboardApplication.state();
         keyboardUi.draw(uiState, applicationIsForeground);

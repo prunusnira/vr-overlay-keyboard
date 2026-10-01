@@ -1,8 +1,13 @@
 #include "openvr_overlay.h"
 
+#include <Windows.h>
+#include <GL/gl.h>
+
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <utility>
 
 namespace {
@@ -10,11 +15,89 @@ constexpr char kOverlayKey[] = "com.prunusnira.vr-overlay-keyboard.main";
 constexpr char kOverlayName[] = "VR Overlay Keyboard";
 constexpr float kOverlayWidthMeters = 1.45f;
 constexpr float kOverlayDistanceMeters = 1.25f;
+constexpr float kStickDeadzone = 0.18f;
+constexpr float kMinimumOverlayWidthMeters = 0.55f;
+constexpr float kMaximumOverlayWidthMeters = 2.80f;
+constexpr float kOverlayZoomMetersPerSecond = 0.90f;
+constexpr float kMinimumGripDistanceMeters = 0.25f;
+constexpr float kMaximumGripDistanceMeters = 4.00f;
+constexpr float kGripDistanceMetersPerSecond = 0.80f;
+constexpr float kMaximumManipulationDeltaSeconds = 0.05f;
+
+float applyStickDeadzone(float value) {
+    if (!std::isfinite(value)) {
+        return 0.0f;
+    }
+    const float magnitude = std::abs(value);
+    if (magnitude <= kStickDeadzone) {
+        return 0.0f;
+    }
+    const float scaledMagnitude = (magnitude - kStickDeadzone) / (1.0f - kStickDeadzone);
+    return std::copysign(scaledMagnitude, value);
+}
 
 void setRuntimeError(std::string *error, vr::EVRInitError code) {
     if (error) {
         *error = vr::VR_GetVRInitErrorAsEnglishDescription(code);
     }
+}
+
+vr::HmdMatrix34_t composeTransforms(const vr::HmdMatrix34_t &left,
+                                    const vr::HmdMatrix34_t &right) {
+    vr::HmdMatrix34_t result{};
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            for (int axis = 0; axis < 3; ++axis) {
+                result.m[row][column] += left.m[row][axis] * right.m[axis][column];
+            }
+        }
+        result.m[row][3] = left.m[row][3];
+        for (int axis = 0; axis < 3; ++axis) {
+            result.m[row][3] += left.m[row][axis] * right.m[axis][3];
+        }
+    }
+    return result;
+}
+
+bool invertRigidTransform(const vr::HmdMatrix34_t &transform, vr::HmdMatrix34_t *inverse) {
+    if (!inverse) {
+        return false;
+    }
+    *inverse = {};
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            inverse->m[row][column] = transform.m[column][row];
+        }
+        inverse->m[row][3] = -(inverse->m[row][0] * transform.m[0][3] +
+                               inverse->m[row][1] * transform.m[1][3] +
+                               inverse->m[row][2] * transform.m[2][3]);
+    }
+    return true;
+}
+
+vr::HmdMatrix34_t controllerTransform(const keyboard::ControllerPointerSample &sample) {
+    vr::HmdMatrix34_t transform{};
+    for (std::size_t row = 0; row < 3; ++row) {
+        for (std::size_t column = 0; column < 4; ++column) {
+            transform.m[row][column] = sample.deviceToAbsoluteTracking[row * 4 + column];
+        }
+    }
+    return transform;
+}
+
+bool isFiniteTransform(const vr::HmdMatrix34_t &transform) {
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 4; ++column) {
+            if (!std::isfinite(transform.m[row][column])) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+std::size_t handIndex(keyboard::ControllerHand hand) {
+    return hand == keyboard::ControllerHand::Left ? 0 : 1;
 }
 }
 
@@ -26,8 +109,8 @@ bool OpenVrOverlay::initialize(std::string *error) {
     shutdown();
 
     vr::EVRInitError initError = vr::VRInitError_None;
-    vr::IVRSystem *system = vr::VR_Init(&initError, vr::VRApplication_Overlay);
-    if (initError != vr::VRInitError_None || !system) {
+    m_system = vr::VR_Init(&initError, vr::VRApplication_Overlay);
+    if (initError != vr::VRInitError_None || !m_system) {
         setRuntimeError(error, initError);
         return false;
     }
@@ -48,27 +131,13 @@ bool OpenVrOverlay::initialize(std::string *error) {
         return false;
     }
 
-    vr::HmdMatrix34_t transform{};
-    transform.m[0][0] = 1.0f;
-    transform.m[1][1] = 1.0f;
-    transform.m[2][2] = 1.0f;
-    transform.m[2][3] = -kOverlayDistanceMeters;
-
-    // 일반 오버레이를 대시보드 탭이 아닌 HMD 기준 앞쪽 위치에 고정한다.
-    const vr::VROverlayError transformError = m_overlay->SetOverlayTransformTrackedDeviceRelative(
-        m_handle, vr::k_unTrackedDeviceIndex_Hmd, &transform);
-    if (transformError != vr::VROverlayError_None) {
-        failWithOverlayError("SetOverlayTransformTrackedDeviceRelative", transformError, error);
-        shutdown();
-        return false;
-    }
-
     const vr::VROverlayError widthError = m_overlay->SetOverlayWidthInMeters(m_handle, kOverlayWidthMeters);
     if (widthError != vr::VROverlayError_None) {
         failWithOverlayError("SetOverlayWidthInMeters", widthError, error);
         shutdown();
         return false;
     }
+    m_overlayWidthMeters = kOverlayWidthMeters;
     const vr::VROverlayError inputError = m_overlay->SetOverlayInputMethod(m_handle, vr::VROverlayInputMethod_Mouse);
     if (inputError != vr::VROverlayError_None) {
         failWithOverlayError("SetOverlayInputMethod", inputError, error);
@@ -87,13 +156,30 @@ bool OpenVrOverlay::initialize(std::string *error) {
 
 void OpenVrOverlay::shutdown() {
     resetPointerState();
+    m_isGripDragging = false;
+    m_gripAwaitingRelease = {};
     if (m_overlay && m_handle != vr::k_ulOverlayHandleInvalid) {
         m_overlay->HideOverlay(m_handle);
         m_overlay->DestroyOverlay(m_handle);
     }
     m_handle = vr::k_ulOverlayHandleInvalid;
     m_overlay = nullptr;
+    m_system = nullptr;
+    m_hasAbsoluteWorldTransform = false;
+    m_absoluteWorldTransform = {};
+    m_overlayWidthMeters = kOverlayWidthMeters;
+    m_lastGripManipulationUpdate = {};
+    m_hasMouseScale = false;
     m_pointerCallback = {};
+    m_interactionStatusCallback = {};
+    m_lastInteractionStatus.clear();
+    if (m_overlayTexture != 0) {
+        const GLuint texture = static_cast<GLuint>(m_overlayTexture);
+        glDeleteTextures(1, &texture);
+        m_overlayTexture = 0;
+        m_overlayTextureWidth = 0;
+        m_overlayTextureHeight = 0;
+    }
     if (m_runtimeInitialized) {
         vr::VR_Shutdown();
         m_runtimeInitialized = false;
@@ -107,8 +193,155 @@ bool OpenVrOverlay::show(std::string *error) {
         }
         return false;
     }
+    if (!m_hasAbsoluteWorldTransform && !placeInFrontOfHead(error)) {
+        return false;
+    }
     const vr::VROverlayError result = m_overlay->ShowOverlay(m_handle);
-    return result == vr::VROverlayError_None || failWithOverlayError("ShowOverlay", result, error);
+    if (result != vr::VROverlayError_None) {
+        return failWithOverlayError("ShowOverlay", result, error);
+    }
+    // 소환 Grip을 계속 누른 채로 막 나타난 오버레이를 즉시 끌고 가지 않도록 먼저 손을 놓게 한다.
+    m_gripAwaitingRelease = {true, true};
+    return true;
+}
+
+bool OpenVrOverlay::placeInFrontOfHead(std::string *error) {
+    if (!m_system || !m_overlay) {
+        if (error) {
+            *error = "SteamVR tracking is not initialized.";
+        }
+        return false;
+    }
+
+    std::array<vr::TrackedDevicePose_t, vr::k_unMaxTrackedDeviceCount> poses{};
+    m_system->GetDeviceToAbsoluteTrackingPose(vr::TrackingUniverseStanding,
+                                              0.0f,
+                                              poses.data(),
+                                              static_cast<std::uint32_t>(poses.size()));
+    const vr::TrackedDevicePose_t &headPose = poses[vr::k_unTrackedDeviceIndex_Hmd];
+    if (!headPose.bPoseIsValid || !headPose.bDeviceIsConnected ||
+        !isFiniteTransform(headPose.mDeviceToAbsoluteTracking)) {
+        if (error) {
+            *error = "The HMD pose is not available; the overlay could not be placed in the room.";
+        }
+        return false;
+    }
+
+    vr::HmdMatrix34_t headToOverlay{};
+    headToOverlay.m[0][0] = 1.0f;
+    headToOverlay.m[1][1] = 1.0f;
+    headToOverlay.m[2][2] = 1.0f;
+    headToOverlay.m[2][3] = -kOverlayDistanceMeters;
+    const vr::HmdMatrix34_t worldTransform = composeTransforms(
+        headPose.mDeviceToAbsoluteTracking, headToOverlay);
+    if (!setAbsoluteTransform(worldTransform, "SetOverlayTransformAbsolute", error)) {
+        return false;
+    }
+    m_hasAbsoluteWorldTransform = true;
+    return true;
+}
+
+bool OpenVrOverlay::setAbsoluteTransform(const vr::HmdMatrix34_t &transform,
+                                         const char *operation,
+                                         std::string *error) {
+    if (!m_overlay || m_handle == vr::k_ulOverlayHandleInvalid) {
+        if (error) {
+            *error = "The OpenVR overlay is not initialized.";
+        }
+        return false;
+    }
+    if (!isFiniteTransform(transform)) {
+        if (error) {
+            *error = "The requested overlay transform contains an invalid coordinate.";
+        }
+        return false;
+    }
+    const vr::VROverlayError result = m_overlay->SetOverlayTransformAbsolute(
+        m_handle, vr::TrackingUniverseStanding, &transform);
+    if (result != vr::VROverlayError_None) {
+        return failWithOverlayError(operation, result, error);
+    }
+    m_absoluteWorldTransform = transform;
+    m_hasAbsoluteWorldTransform = true;
+    return true;
+}
+
+void OpenVrOverlay::orientTowardsUser(vr::HmdMatrix34_t *transform) const {
+    if (!m_system || !transform || !isFiniteTransform(*transform)) {
+        return;
+    }
+    const vr::HmdMatrix34_t &overlayTransform = *transform;
+
+    std::array<vr::TrackedDevicePose_t, vr::k_unMaxTrackedDeviceCount> poses{};
+    m_system->GetDeviceToAbsoluteTrackingPose(vr::TrackingUniverseStanding,
+                                              0.0f,
+                                              poses.data(),
+                                              static_cast<std::uint32_t>(poses.size()));
+    const vr::TrackedDevicePose_t &headPose = poses[vr::k_unTrackedDeviceIndex_Hmd];
+    if (!headPose.bPoseIsValid || !headPose.bDeviceIsConnected ||
+        !isFiniteTransform(headPose.mDeviceToAbsoluteTracking)) {
+        return;
+    }
+
+    // 월드 좌표의 위치는 유지하고, 오버레이 정면(+Z)만 HMD 위치를 향하게 한다.
+    std::array<float, 3> towardHead = {
+        headPose.mDeviceToAbsoluteTracking.m[0][3] - overlayTransform.m[0][3],
+        headPose.mDeviceToAbsoluteTracking.m[1][3] - overlayTransform.m[1][3],
+        headPose.mDeviceToAbsoluteTracking.m[2][3] - overlayTransform.m[2][3],
+    };
+    const auto normalize = [](std::array<float, 3> *vector) {
+        const float length = std::sqrt((*vector)[0] * (*vector)[0] +
+                                       (*vector)[1] * (*vector)[1] +
+                                       (*vector)[2] * (*vector)[2]);
+        if (!std::isfinite(length) || length < 0.0001f) {
+            return false;
+        }
+        for (float &component : *vector) {
+            component /= length;
+        }
+        return true;
+    };
+    if (!normalize(&towardHead)) {
+        return;
+    }
+
+    // 화면을 기울이지 않도록 월드 위쪽을 기준으로 좌우·위쪽 축을 다시 만든다.
+    std::array<float, 3> worldUp = {0.0f, 1.0f, 0.0f};
+    std::array<float, 3> screenRight = {
+        worldUp[1] * towardHead[2] - worldUp[2] * towardHead[1],
+        worldUp[2] * towardHead[0] - worldUp[0] * towardHead[2],
+        worldUp[0] * towardHead[1] - worldUp[1] * towardHead[0],
+    };
+    if (!normalize(&screenRight)) {
+        // 오버레이가 사용자 바로 위나 아래에 있을 때는 기존 좌우 방향을 보존한다.
+        screenRight = {overlayTransform.m[0][0], overlayTransform.m[1][0], overlayTransform.m[2][0]};
+        const float projection = screenRight[0] * towardHead[0] +
+                                 screenRight[1] * towardHead[1] +
+                                 screenRight[2] * towardHead[2];
+        for (std::size_t axis = 0; axis < screenRight.size(); ++axis) {
+            screenRight[axis] -= projection * towardHead[axis];
+        }
+        if (!normalize(&screenRight)) {
+            return;
+        }
+    }
+    std::array<float, 3> screenUp = {
+        towardHead[1] * screenRight[2] - towardHead[2] * screenRight[1],
+        towardHead[2] * screenRight[0] - towardHead[0] * screenRight[2],
+        towardHead[0] * screenRight[1] - towardHead[1] * screenRight[0],
+    };
+    if (!normalize(&screenUp)) {
+        return;
+    }
+
+    vr::HmdMatrix34_t facingTransform = overlayTransform;
+    for (std::size_t row = 0; row < 3; ++row) {
+        facingTransform.m[row][0] = screenRight[row];
+        facingTransform.m[row][1] = screenUp[row];
+        facingTransform.m[row][2] = towardHead[row];
+    }
+    // HMD 추적이 유효하지 않으면 전달받은 이동 행렬을 그대로 사용한다.
+    *transform = facingTransform;
 }
 
 bool OpenVrOverlay::hide(std::string *error) {
@@ -123,6 +356,8 @@ bool OpenVrOverlay::hide(std::string *error) {
         return failWithOverlayError("HideOverlay", result, error);
     }
     resetPointerState();
+    m_isGripDragging = false;
+    m_gripAwaitingRelease = {};
     return true;
 }
 
@@ -140,25 +375,87 @@ bool OpenVrOverlay::updateTexture(const keyboard::ImageFrame &frame, std::string
         return false;
     }
 
+    const bool textureSizeChanged = m_textureWidth != frame.width || m_textureHeight != frame.height;
+    if (!m_hasMouseScale || textureSizeChanged) {
+        // 포인터 UV를 픽셀로 환산할 때 쓰는 OpenVR 입력 크기는 첫 프레임과 크기 변경 때만 갱신한다.
+        const vr::HmdVector2_t mouseScale{{static_cast<float>(frame.width), static_cast<float>(frame.height)}};
+        const vr::VROverlayError scaleError = m_overlay->SetOverlayMouseScale(m_handle, &mouseScale);
+        if (scaleError != vr::VROverlayError_None) {
+            return failWithOverlayError("SetOverlayMouseScale", scaleError, error);
+        }
+        m_hasMouseScale = true;
+    }
     m_textureWidth = frame.width;
     m_textureHeight = frame.height;
-    // 포인터 UV를 같은 RGBA 프레임의 픽셀 좌표로 환산할 수 있도록 OpenVR 입력 크기를 갱신한다.
-    const vr::HmdVector2_t mouseScale{{static_cast<float>(m_textureWidth), static_cast<float>(m_textureHeight)}};
-    const vr::VROverlayError scaleError = m_overlay->SetOverlayMouseScale(m_handle, &mouseScale);
-    if (scaleError != vr::VROverlayError_None) {
-        return failWithOverlayError("SetOverlayMouseScale", scaleError, error);
+
+    GLint previousTexture = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+    if (m_overlayTexture == 0) {
+        GLuint texture = 0;
+        glGenTextures(1, &texture);
+        m_overlayTexture = texture;
+    }
+    if (m_overlayTexture == 0) {
+        if (error) {
+            *error = "OpenGL could not create the overlay texture.";
+        }
+        return false;
     }
 
-    const vr::VROverlayError textureError = m_overlay->SetOverlayRaw(
-        m_handle,
-        const_cast<std::uint8_t *>(frame.rgbaPixels.data()),
-        m_textureWidth,
-        m_textureHeight,
-        4);
-    return textureError == vr::VROverlayError_None || failWithOverlayError("SetOverlayRaw", textureError, error);
+    // RGBA 프레임은 위쪽 행부터 저장하므로 OpenGL 텍스처의 행 방향에 맞춰 거꾸로 복사한다.
+    const std::size_t rowBytes = static_cast<std::size_t>(frame.width) * 4;
+    m_overlayUploadPixels.resize(frame.rgbaPixels.size());
+    for (std::uint32_t row = 0; row < frame.height; ++row) {
+        const std::uint32_t sourceRow = frame.height - row - 1;
+        std::memcpy(m_overlayUploadPixels.data() + rowBytes * row,
+                    frame.rgbaPixels.data() + rowBytes * sourceRow,
+                    rowBytes);
+    }
+
+    const GLuint texture = static_cast<GLuint>(m_overlayTexture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    constexpr GLenum kGlClampToEdge = 0x812F;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, kGlClampToEdge);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, kGlClampToEdge);
+    if (m_overlayTextureWidth != frame.width || m_overlayTextureHeight != frame.height) {
+        glTexImage2D(GL_TEXTURE_2D,
+                     0,
+                     GL_RGBA,
+                     static_cast<GLsizei>(frame.width),
+                     static_cast<GLsizei>(frame.height),
+                     0,
+                     GL_RGBA,
+                     GL_UNSIGNED_BYTE,
+                     m_overlayUploadPixels.data());
+        m_overlayTextureWidth = frame.width;
+        m_overlayTextureHeight = frame.height;
+    } else {
+        glTexSubImage2D(GL_TEXTURE_2D,
+                        0,
+                        0,
+                        0,
+                        static_cast<GLsizei>(frame.width),
+                        static_cast<GLsizei>(frame.height),
+                        GL_RGBA,
+                        GL_UNSIGNED_BYTE,
+                        m_overlayUploadPixels.data());
+    }
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+
+    // Raw 바이트 제출은 갱신 사이에 텍스처가 비는 현상이 있어 지속되는 OpenGL 텍스처로 교체한다.
+    vr::Texture_t overlayTexture{};
+    overlayTexture.handle = reinterpret_cast<void *>(static_cast<std::uintptr_t>(m_overlayTexture));
+    overlayTexture.eType = vr::TextureType_OpenGL;
+    overlayTexture.eColorSpace = vr::ColorSpace_Auto;
+    const vr::VROverlayError textureError = m_overlay->SetOverlayTexture(m_handle, &overlayTexture);
+    return textureError == vr::VROverlayError_None ||
+        failWithOverlayError("SetOverlayTexture", textureError, error);
 }
 
-void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSamples &samples) {
+void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSamples &samples,
+                                             const keyboard::AppSettings &settings) {
     if (!m_overlay || m_handle == vr::k_ulOverlayHandleInvalid || !isVisible()) {
         return;
     }
@@ -173,10 +470,43 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
         }
     }
 
+    // 소환에 사용한 Grip만 해제 입력을 기다린다. 일반 이동은 패널을 가리키며 누른 동안 시작할 수 있다.
+    for (const keyboard::ControllerPointerSample *hand : {leftSample, rightSample}) {
+        if (hand && !hand->gripPressed) {
+            m_gripAwaitingRelease[handIndex(hand->hand)] = false;
+        }
+    }
+
     const keyboard::ControllerPointerSample *sample = nullptr;
     int x = -1;
     int y = -1;
     bool intersects = false;
+    if (m_isGripDragging) {
+        sample = m_dragHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
+        if (!sample || !sample->poseActive || !sample->gripPressed ||
+            sample->hand != settings.pointerHand) {
+            // Grip을 놓거나 손 추적이 끊기면 현재 절대 좌표에서 이동을 끝낸다.
+            m_isGripDragging = false;
+            if (sample && sample->gripPressed) {
+                m_gripAwaitingRelease[handIndex(sample->hand)] = true;
+            }
+            resetPointerState();
+            reportInteractionStatus("Grip drag ended; the overlay position is fixed.");
+            return;
+        }
+        std::string dragError;
+        if (!updateGripDrag(*sample, &dragError)) {
+            m_isGripDragging = false;
+            m_gripAwaitingRelease[handIndex(sample->hand)] = true;
+            resetPointerState();
+            reportInteractionStatus("Grip drag failed: " + dragError);
+            return;
+        }
+        // 이동 중에는 같은 손의 광선이 UI를 누르지 않도록 포인터 입력을 잠시 멈춘다.
+        resetPointerState();
+        return;
+    }
+
     if (m_hasCaptureHand) {
         sample = m_captureHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
         if (!sample) {
@@ -184,49 +514,39 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
             resetPointerState();
             return;
         }
-        intersects = computePointerPosition(*sample, &x, &y);
+        intersects = computePointerPosition(*sample,
+                                            settings.pointerOffsetXPercent,
+                                            settings.pointerOffsetYPercent,
+                                            &x,
+                                            &y);
     } else {
-        int leftX = -1;
-        int leftY = -1;
-        int rightX = -1;
-        int rightY = -1;
-        const bool leftIntersects = leftSample && computePointerPosition(*leftSample, &leftX, &leftY);
-        const bool rightIntersects = rightSample && computePointerPosition(*rightSample, &rightX, &rightY);
-
-        if (rightIntersects && rightSample->selectPressed) {
-            sample = rightSample;
-            x = rightX;
-            y = rightY;
-        } else if (leftIntersects && leftSample->selectPressed) {
-            sample = leftSample;
-            x = leftX;
-            y = leftY;
-        } else if (m_hasHoverHand && m_hoverHand == keyboard::ControllerHand::Left && leftIntersects) {
-            sample = leftSample;
-            x = leftX;
-            y = leftY;
-        } else if (m_hasHoverHand && m_hoverHand == keyboard::ControllerHand::Right && rightIntersects) {
-            sample = rightSample;
-            x = rightX;
-            y = rightY;
-        } else if (rightIntersects) {
-            sample = rightSample;
-            x = rightX;
-            y = rightY;
-        } else if (leftIntersects) {
-            sample = leftSample;
-            x = leftX;
-            y = leftY;
-        }
-
+        sample = settings.pointerHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
         if (!sample) {
-            m_hasHoverHand = false;
             m_pointerInsideOverlay = false;
             return;
         }
-        m_hoverHand = sample->hand;
-        m_hasHoverHand = true;
-        intersects = true;
+        intersects = computePointerPosition(*sample,
+                                            settings.pointerOffsetXPercent,
+                                            settings.pointerOffsetYPercent,
+                                            &x,
+                                            &y);
+    }
+
+    const std::size_t selectedIndex = handIndex(sample->hand);
+    if (intersects && sample->hand == settings.pointerHand && sample->gripPressed &&
+        !m_gripAwaitingRelease[selectedIndex]) {
+        // 트리거로 UI를 누른 상태여도 Grip 이동을 먼저 처리하고 기존 클릭은 취소한다.
+        std::string dragError;
+        if (beginGripDrag(*sample, &dragError)) {
+            m_isGripDragging = true;
+            resetPointerState();
+            dispatchPointerEvent(keyboard::PointerEventType::Leave, -1, -1);
+            reportInteractionStatus("Grip drag started.");
+        } else {
+            m_gripAwaitingRelease[selectedIndex] = true;
+            reportInteractionStatus("Grip drag could not start: " + dragError);
+        }
+        return;
     }
 
     if (intersects) {
@@ -261,13 +581,115 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
         m_selectWasPressed = false;
         resetPointerState();
     }
+
+    // 먼저 현재 화면 기준으로 포인터·Grip 판정을 마친 뒤 다음 갱신에 쓸 방향을 맞춘다.
+    if (!m_isGripDragging && !m_hasCaptureHand) {
+        vr::HmdMatrix34_t facingTransform = m_absoluteWorldTransform;
+        orientTowardsUser(&facingTransform);
+        std::string transformError;
+        if (!setAbsoluteTransform(facingTransform, "SetOverlayTransformAbsolute", &transformError)) {
+            reportInteractionStatus("Overlay rotation failed: " + transformError);
+        }
+    }
+}
+
+bool OpenVrOverlay::beginGripDrag(const keyboard::ControllerPointerSample &sample, std::string *error) {
+    if (!m_overlay || !m_hasAbsoluteWorldTransform || !sample.poseActive || !sample.gripPressed) {
+        if (error) {
+            *error = "The controller pose or absolute overlay position is unavailable.";
+        }
+        return false;
+    }
+    const vr::HmdMatrix34_t &overlayTransform = m_absoluteWorldTransform;
+
+    const vr::HmdMatrix34_t controllerToWorld = controllerTransform(sample);
+    if (!isFiniteTransform(controllerToWorld) || !isFiniteTransform(overlayTransform)) {
+        if (error) {
+            *error = "The controller or overlay transform contains an invalid coordinate.";
+        }
+        return false;
+    }
+    vr::HmdMatrix34_t worldToController{};
+    if (!invertRigidTransform(controllerToWorld, &worldToController)) {
+        return false;
+    }
+    // 누른 순간의 오버레이와 컨트롤러 사이 간격을 보존해 잡을 때 화면이 튀지 않게 한다.
+    m_dragControllerToOverlay = composeTransforms(worldToController, overlayTransform);
+    m_dragHand = sample.hand;
+    m_hasAbsoluteWorldTransform = true;
+    m_lastGripManipulationUpdate = std::chrono::steady_clock::now();
+    return true;
+}
+
+bool OpenVrOverlay::updateGripDrag(const keyboard::ControllerPointerSample &sample, std::string *error) {
+    if (!sample.poseActive || !sample.gripPressed) {
+        return false;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const float elapsedSeconds = std::clamp(
+        std::chrono::duration<float>(now - m_lastGripManipulationUpdate).count(),
+        0.0f,
+        kMaximumManipulationDeltaSeconds);
+    m_lastGripManipulationUpdate = now;
+
+    const float stickX = sample.manipulationStickActive
+        ? applyStickDeadzone(sample.manipulationStickX) : 0.0f;
+    const float stickY = sample.manipulationStickActive
+        ? applyStickDeadzone(sample.manipulationStickY) : 0.0f;
+
+    // 스틱 좌우는 패널 폭을 바꾸고, 위쪽 입력은 컨트롤러 앞 방향으로 거리를 늘린다.
+    if (stickX != 0.0f && elapsedSeconds > 0.0f) {
+        const float requestedWidth = std::clamp(
+            m_overlayWidthMeters + stickX * kOverlayZoomMetersPerSecond * elapsedSeconds,
+            kMinimumOverlayWidthMeters,
+            kMaximumOverlayWidthMeters);
+        if (std::abs(requestedWidth - m_overlayWidthMeters) > 0.0001f) {
+            const vr::VROverlayError widthError = m_overlay->SetOverlayWidthInMeters(m_handle, requestedWidth);
+            if (widthError != vr::VROverlayError_None) {
+                return failWithOverlayError("SetOverlayWidthInMeters", widthError, error);
+            }
+            m_overlayWidthMeters = requestedWidth;
+        }
+    }
+    if (stickY != 0.0f && elapsedSeconds > 0.0f) {
+        // 상대 좌표의 -Z가 컨트롤러 앞쪽이므로 스틱 위는 멀리, 아래는 가까이 이동한다.
+        m_dragControllerToOverlay.m[2][3] = std::clamp(
+            m_dragControllerToOverlay.m[2][3] - stickY * kGripDistanceMetersPerSecond * elapsedSeconds,
+            -kMaximumGripDistanceMeters,
+            -kMinimumGripDistanceMeters);
+    }
+
+    vr::HmdMatrix34_t worldTransform = composeTransforms(
+        controllerTransform(sample), m_dragControllerToOverlay);
+    // 이동 결과의 위치에 정면 방향만 합친 뒤 한 번 제출해 회전 갱신이 이동을 되돌리지 않게 한다.
+    orientTowardsUser(&worldTransform);
+    return setAbsoluteTransform(worldTransform, "SetOverlayTransformAbsolute", error);
 }
 
 void OpenVrOverlay::setPointerCallback(PointerCallback callback) {
     m_pointerCallback = std::move(callback);
 }
 
-bool OpenVrOverlay::computePointerPosition(const keyboard::ControllerPointerSample &sample, int *x, int *y) const {
+void OpenVrOverlay::setInteractionStatusCallback(InteractionStatusCallback callback) {
+    m_interactionStatusCallback = std::move(callback);
+}
+
+void OpenVrOverlay::reportInteractionStatus(const std::string &message) {
+    // 같은 런타임 오류를 매 프레임 기록하지 않고 상태가 바뀔 때만 공용 진단 경로로 보낸다.
+    if (message != m_lastInteractionStatus) {
+        m_lastInteractionStatus = message;
+        if (m_interactionStatusCallback) {
+            m_interactionStatusCallback(message);
+        }
+    }
+}
+
+bool OpenVrOverlay::computePointerPosition(const keyboard::ControllerPointerSample &sample,
+                                          float offsetXPercent,
+                                          float offsetYPercent,
+                                          int *x,
+                                          int *y) const {
     if (!m_overlay || !sample.poseActive || !x || !y || m_textureWidth == 0 || m_textureHeight == 0) {
         return false;
     }
@@ -302,9 +724,11 @@ bool OpenVrOverlay::computePointerPosition(const keyboard::ControllerPointerSamp
         return false;
     }
 
-    // OpenVR UV의 세로축과 화면 좌표계 방향을 맞춰 ImGui client pixel로 변환한다.
-    const float pixelX = intersection.vUVs.v[0] * static_cast<float>(m_textureWidth);
-    const float pixelY = (1.0f - intersection.vUVs.v[1]) * static_cast<float>(m_textureHeight);
+    // 퍼센트 보정을 커서와 클릭 좌표에 함께 적용해 조준점과 UI 입력을 일치시킨다.
+    const float pixelX = intersection.vUVs.v[0] * static_cast<float>(m_textureWidth) +
+                         static_cast<float>(m_textureWidth) * offsetXPercent / 100.0f;
+    const float pixelY = intersection.vUVs.v[1] * static_cast<float>(m_textureHeight) +
+                         static_cast<float>(m_textureHeight) * offsetYPercent / 100.0f;
     *x = static_cast<int>(std::clamp(pixelX, 0.0f, static_cast<float>(m_textureWidth - 1)));
     *y = static_cast<int>(std::clamp(pixelY, 0.0f, static_cast<float>(m_textureHeight - 1)));
     return true;
@@ -330,7 +754,6 @@ void OpenVrOverlay::resetPointerState() {
         dispatchPointerEvent(keyboard::PointerEventType::Cancel, -1, -1);
     }
     m_hasCaptureHand = false;
-    m_hasHoverHand = false;
     m_selectWasPressed = false;
     m_pointerInsideOverlay = false;
     m_lastPointerX = -1;

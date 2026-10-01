@@ -1,5 +1,10 @@
 {
-  "default_bindings": [],
+  "default_bindings": [
+    {
+      "controller_type": "oculus_touch",
+      "binding_url": "bindings/oculus_touch.json"
+    }
+  ],
   "actions": [
     {
       "name": "/actions/keyboard/in/ToggleKeyboard",
@@ -15,6 +20,11 @@
       "name": "/actions/keyboard/in/PointerClick",
       "requirement": "optional",
       "type": "boolean"
+    },
+    {
+      "name": "/actions/keyboard/in/PointerManipulation",
+      "requirement": "optional",
+      "type": "vector2"
     },
     {
       "name": "/actions/keyboard/in/LeftGrip",
@@ -100,6 +110,7 @@
       "/actions/keyboard/in/ToggleKeyboard": "Toggle Keyboard",
       "/actions/keyboard/in/ControllerPose": "Controller Pointer Pose",
       "/actions/keyboard/in/PointerClick": "Controller Pointer Click",
+      "/actions/keyboard/in/PointerManipulation": "Overlay size and distance",
       "/actions/keyboard/in/LeftGrip": "Left Grip Summon Button",
       "/actions/keyboard/in/LeftTrigger": "Left Trigger Summon Button",
       "/actions/keyboard/in/LeftA": "Left A Summon Button",
@@ -121,6 +132,7 @@
       "/actions/keyboard/in/ToggleKeyboard": "키보드 표시 전환",
       "/actions/keyboard/in/ControllerPose": "컨트롤러 포인터 위치",
       "/actions/keyboard/in/PointerClick": "컨트롤러 포인터 클릭",
+      "/actions/keyboard/in/PointerManipulation": "오버레이 크기와 거리 조절",
       "/actions/keyboard/in/LeftGrip": "왼쪽 Grip 소환 버튼",
       "/actions/keyboard/in/LeftTrigger": "왼쪽 Trigger 소환 버튼",
       "/actions/keyboard/in/LeftA": "왼쪽 A 소환 버튼",
@@ -142,6 +154,7 @@
       "/actions/keyboard/in/ToggleKeyboard": "キーボード表示の切り替え",
       "/actions/keyboard/in/ControllerPose": "コントローラーポインター姿勢",
       "/actions/keyboard/in/PointerClick": "コントローラーポインタークリック",
+      "/actions/keyboard/in/PointerManipulation": "オーバーレイの大きさと距離",
       "/actions/keyboard/in/LeftGrip": "左 Grip 表示ボタン",
       "/actions/keyboard/in/LeftTrigger": "左 Trigger 表示ボタン",
       "/actions/keyboard/in/LeftA": "左 A 表示ボタン",

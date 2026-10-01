@@ -1,6 +1,6 @@
 # VR Overlay Keyboard app
 
-`app/` is an independent Windows CMake project. It uses Dear ImGui with the Win32 platform backend and OpenGL3 renderer. The Win32/OpenGL host renders the UI in a desktop window and reads the same frame as RGBA pixels for the OpenVR overlay. Overlay readback runs only while the overlay is visible, at about 30 frames per second; the desktop window continues to render every frame. The prototype remains unchanged and is the behavior reference for controller input, language switching, Japanese IME mode, and Chatbox OSC.
+`app/` is an independent Windows CMake project. It uses Dear ImGui with the Win32 platform backend and OpenGL3 renderer. The Win32/OpenGL host renders the UI in a desktop window and reads the same frame as RGBA pixels for a persistent OpenGL texture submitted to the OpenVR overlay. Overlay readback runs only while the overlay is visible, at about 30 frames per second; the desktop window continues to render every frame. The prototype remains unchanged and is the behavior reference for controller input, language switching, Japanese IME mode, and Chatbox OSC.
 
 ## Requirements
 
@@ -27,7 +27,11 @@ Run `app/build/Release/vr-overlay-keyboard.exe` while SteamVR is running. The ap
 
 ## SteamVR Input setup
 
-The app registers `resources/steamvr/actions.json` at startup and reads the `ToggleKeyboard`, `ControllerPose`, `PointerClick`, and left/right summon-button actions. No controller-specific default binding is included until the supported controller is selected. In SteamVR's controller input settings, bind the toggle action, the target controller's aim pose to **Controller Pointer Pose**, and its select input to **Controller Pointer Click**. Bind the selected **Summon Button** actions to the physical inputs used by the option setting. The app maps the pose ray to the ordinary overlay with OpenVR `ComputeOverlayIntersection`, then sends pointer events to Dear ImGui. Verify the action bindings and pointer path on the target setup; neither has been checked in an HMD yet.
+The app registers `resources/steamvr/actions.json` at startup and reads the `ToggleKeyboard`, `ControllerPose`, `PointerClick`, `PointerManipulation`, and left/right summon-button actions. A default SteamVR binding is included for Meta Quest (`oculus_touch`): both controller poses and triggers drive the pointer, the selected controller's thumbstick drives overlay size and distance while Grip is held, and grip drives overlay dragging. Other controller types still need their actions bound in SteamVR. If SteamVR has an older custom binding saved for this app, select the app's default binding in **Controller Input Binding** to load the shipped profile. The app maps the selected hand's pose ray to the ordinary overlay with OpenVR `ComputeOverlayIntersection`, then sends pointer events to Dear ImGui.
+
+The overlay is placed 1.25 m in front of the HMD the first time it is shown, then keeps its position in standing tracking space while rotating to face the HMD. In **Options**, choose the pointer hand and adjust horizontal and vertical offsets from -10% to +10% of the overlay size. Positive values move right or down; negative values move left or up. The default vertical offset is +2.4%. Aim that controller at the overlay, hold **Grip**, move the controller, and release Grip to leave the overlay at the new position. While holding Grip, move the thumbstick left or right to shrink or enlarge the panel, and up or down to move it farther away or closer. The drag keeps its starting offset so the panel does not jump when grabbed.
+
+Options preserves the editor's input focus and remains above the main keyboard. Pointer adjustment sliders use the same virtual input path as keyboard buttons. VR pointer events are queued after the Win32 backend's desktop mouse update so the visible cursor and click position agree. Grip dragging still requires the selected controller to point at the panel when starting; it can cancel an ongoing trigger click. Release the summon Grip once before dragging. Position and facing rotation are submitted together from the app's stored world transform. **Input diagnostics** shows each Grip's binding and pressed state, and the status line records drag start, end, and OpenVR errors. These changes compile in Release; their HMD behavior needs confirmation.
 
 ## Options and controller summon
 
@@ -35,7 +39,7 @@ Use **Options** in the keyboard screen to open a separate ImGui settings window.
 
 The default summon combination is **Right Grip + Right B**, with a **0 second** hold time. Select one or more logical controls in Options and adjust the hold time from 0 to 3 seconds in 0.1-second steps. All selected controls must be pressed together. The combination shows a hidden overlay once; release the controls before it can trigger again. The existing **Toggle Keyboard** SteamVR action remains a show/hide toggle.
 
-Settings are saved to `%LOCALAPPDATA%\VROverlayKeyboard\settings.ini`. Until a controller profile is selected, SteamVR bindings must be configured manually. Available logical actions are left/right Grip, Trigger, A, B, Menu, Joystick, and Trackpad. Some controls may not exist on a particular controller; bind the selected actions in SteamVR and confirm that Options reports them active. The keyboard screen's **Hide keyboard overlay** button hides the VR overlay without closing the desktop app.
+Settings are saved to `%LOCALAPPDATA%\VROverlayKeyboard\settings.ini`. Available logical summon actions are left/right Grip, Trigger, A, B, Menu, Joystick, and Trackpad. Other controller models may not expose all controls; bind the selected actions in SteamVR and confirm that Options reports them active. The keyboard screen's **Hide keyboard overlay** button hides the VR overlay without closing the desktop app.
 
 ## Text and Chatbox input
 
@@ -71,7 +75,7 @@ It reproduces the original outside-click focus loss and checks startup focus, fo
 - Windows may deny foreground focus. The app reports that state and does not send virtual keys to another foreground process.
 - The user still observed per-jamo Korean commits with the mouse before the thread-scoped mouse router was added. The new native mouse route needs validation with the installed Korean IME. Controller input is also unverified in this app.
 - TSF candidate selection, Chinese IME behavior, and multilingual OSC round trips are unverified.
-- The SteamVR action manifest currently has no default bindings. User bindings can be created in SteamVR settings.
+- The Meta Quest Touch default profile and visible pointer cursor are implemented but still need HMD confirmation. Other controller models need a SteamVR binding profile.
 
 ## Third-party license
 

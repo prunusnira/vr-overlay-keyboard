@@ -1,0 +1,28 @@
+{
+  "bindings": {
+    "/actions/keyboard": {
+      "chords": [],
+      "haptics": [],
+      "poses": [
+        { "output": "/actions/keyboard/in/ControllerPose", "path": "/user/hand/left/pose/raw" },
+        { "output": "/actions/keyboard/in/ControllerPose", "path": "/user/hand/right/pose/raw" }
+      ],
+      "skeleton": [],
+      "sources": [
+        { "path": "/user/hand/left/input/trigger", "mode": "button", "inputs": { "click": { "output": "/actions/keyboard/in/PointerClick" } } },
+        { "path": "/user/hand/right/input/trigger", "mode": "button", "inputs": { "click": { "output": "/actions/keyboard/in/PointerClick" } } },
+        { "path": "/user/hand/left/input/grip", "mode": "button", "parameters": { "click_activate_threshold": "0.8", "click_deactivate_threshold": "0.7" }, "inputs": { "click": { "output": "/actions/keyboard/in/LeftGrip" } } },
+        { "path": "/user/hand/right/input/grip", "mode": "button", "parameters": { "click_activate_threshold": "0.8", "click_deactivate_threshold": "0.7" }, "inputs": { "click": { "output": "/actions/keyboard/in/RightGrip" } } },
+        { "path": "/user/hand/left/input/x", "mode": "button", "inputs": { "click": { "output": "/actions/keyboard/in/LeftA" } } },
+        { "path": "/user/hand/left/input/y", "mode": "button", "inputs": { "click": { "output": "/actions/keyboard/in/LeftB" } } },
+        { "path": "/user/hand/right/input/a", "mode": "button", "inputs": { "click": { "output": "/actions/keyboard/in/RightA" } } },
+        { "path": "/user/hand/right/input/b", "mode": "button", "inputs": { "click": { "output": "/actions/keyboard/in/RightB" } } },
+        { "path": "/user/hand/left/input/joystick", "mode": "joystick", "inputs": { "click": { "output": "/actions/keyboard/in/LeftJoystick" }, "position": { "output": "/actions/keyboard/in/PointerManipulation" } } },
+        { "path": "/user/hand/right/input/joystick", "mode": "joystick", "inputs": { "click": { "output": "/actions/keyboard/in/RightJoystick" }, "position": { "output": "/actions/keyboard/in/PointerManipulation" } } }
+      ]
+    }
+  },
+  "controller_type": "oculus_touch",
+  "description": "기본 포인터·Grip 이동·키보드 표시 입력",
+  "name": "VR Overlay Keyboard - Oculus Touch"
+}

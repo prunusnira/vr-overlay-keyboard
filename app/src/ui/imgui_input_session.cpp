@@ -44,6 +44,7 @@ void ImGuiInputSession::beginFrame() {
     if (!io.MouseDown[ImGuiMouseButton_Left] && !io.MouseReleased[ImGuiMouseButton_Left]) {
         m_pressedButtonId = 0;
         m_draggedScrollbarId = 0;
+        m_draggedSliderId = 0;
     }
 }
 
@@ -52,6 +53,7 @@ void ImGuiInputSession::endFrame() {
     if (ImGui::GetIO().MouseReleased[ImGuiMouseButton_Left]) {
         m_pressedButtonId = 0;
         m_draggedScrollbarId = 0;
+        m_draggedSliderId = 0;
     }
 }
 
@@ -140,6 +142,56 @@ bool ImGuiInputSession::button(const char *label, const ImVec2 &size, bool selec
         return hovered;
     }
     return false;
+}
+
+bool ImGuiInputSession::sliderFloat(const char *label, const ImVec2 &size, float &value,
+                                   float minimum, float maximum, const char *format) {
+    ImGuiWindow *window = ImGui::GetCurrentWindow();
+    if (window->SkipItems || maximum <= minimum) {
+        return false;
+    }
+    const ImVec2 actualSize = ImGui::CalcItemSize(size, ImGui::CalcItemWidth(), ImGui::GetFrameHeight());
+    const ImVec2 position = ImGui::GetCursorScreenPos();
+    const ImRect bounds(position, ImVec2(position.x + actualSize.x, position.y + actualSize.y));
+    ImGui::ItemSize(bounds, ImGui::GetStyle().FramePadding.y);
+    const ImGuiID id = window->GetID(label);
+    if (!ImGui::ItemAdd(bounds, id, nullptr, ImGuiItemFlags_NoNav)) {
+        return false;
+    }
+    const ImRect visibleBounds(ImMax(bounds.Min, window->ClipRect.Min), ImMin(bounds.Max, window->ClipRect.Max));
+    m_virtualControlBounds.emplace_back(visibleBounds.Min.x, visibleBounds.Min.y,
+                                        visibleBounds.Max.x, visibleBounds.Max.y);
+    const ImGuiIO &io = ImGui::GetIO();
+    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+        ImGui::IsMouseHoveringRect(bounds.Min, bounds.Max, true);
+    if (hovered) {
+        ImGui::SetHoveredID(id);
+        if (io.MouseClicked[ImGuiMouseButton_Left]) {
+            m_draggedSliderId = id;
+        }
+    }
+    // 설정 슬라이더도 가상 버튼처럼 ActiveId를 변경하지 않아 IME 조합과 드래그가 충돌하지 않는다.
+    const bool dragging = m_draggedSliderId == id;
+    const float previousValue = value;
+    constexpr float thumbWidth = 12.0f;
+    const float travel = std::max(1.0f, actualSize.x - thumbWidth);
+    value = std::clamp(value, minimum, maximum);
+    if (dragging) {
+        const float fraction = std::clamp((io.MousePos.x - position.x - thumbWidth * 0.5f) / travel,
+                                          0.0f, 1.0f);
+        value = minimum + fraction * (maximum - minimum);
+    }
+    ImGui::RenderFrame(bounds.Min, bounds.Max, ImGui::GetColorU32(
+        dragging ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg),
+        true, ImGui::GetStyle().FrameRounding);
+    const float thumbX = position.x + (value - minimum) / (maximum - minimum) * travel;
+    ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(thumbX, position.y + 2.0f),
+        ImVec2(thumbX + thumbWidth, bounds.Max.y - 2.0f),
+        ImGui::GetColorU32(dragging ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab), 3.0f);
+    char valueText[64];
+    ImFormatString(valueText, sizeof(valueText), format, value);
+    ImGui::RenderTextClipped(bounds.Min, bounds.Max, valueText, nullptr, nullptr, ImVec2(0.5f, 0.5f));
+    return value != previousValue;
 }
 
 bool ImGuiInputSession::horizontalScrollbar(const char *label, const ImVec2 &size,

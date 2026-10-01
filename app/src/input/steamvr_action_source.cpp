@@ -9,6 +9,7 @@ constexpr char kActionSetPath[] = "/actions/keyboard";
 constexpr char kToggleActionPath[] = "/actions/keyboard/in/ToggleKeyboard";
 constexpr char kPointerPoseActionPath[] = "/actions/keyboard/in/ControllerPose";
 constexpr char kPointerClickActionPath[] = "/actions/keyboard/in/PointerClick";
+constexpr char kPointerManipulationActionPath[] = "/actions/keyboard/in/PointerManipulation";
 
 struct ControllerActionPath {
     keyboard::ControllerButton button;
@@ -84,6 +85,12 @@ bool SteamVrActionSource::initialize(const std::string &absoluteManifestPath,
         shutdown();
         return false;
     }
+    result = m_input->GetActionHandle(kPointerManipulationActionPath, &m_pointerManipulationAction);
+    if (result != vr::VRInputError_None) {
+        setError(error, "GetActionHandle(PointerManipulation)", result);
+        shutdown();
+        return false;
+    }
     // 옵션에서 선택할 수 있는 각 논리 버튼의 액션 handle을 시작 시 한 번만 조회한다.
     for (std::size_t index = 0; index < kSummonActionPaths.size(); ++index) {
         result = m_input->GetActionHandle(kSummonActionPaths[index].path, &m_summonButtonActions[index]);
@@ -122,6 +129,7 @@ void SteamVrActionSource::shutdown() {
     m_toggleAction = vr::k_ulInvalidActionHandle;
     m_pointerPoseAction = vr::k_ulInvalidActionHandle;
     m_pointerClickAction = vr::k_ulInvalidActionHandle;
+    m_pointerManipulationAction = vr::k_ulInvalidActionHandle;
     m_summonButtonActions.fill(vr::k_ulInvalidActionHandle);
     m_leftHandSource = vr::k_ulInvalidInputValueHandle;
     m_rightHandSource = vr::k_ulInvalidInputValueHandle;
@@ -159,6 +167,7 @@ bool SteamVrActionSource::poll(std::string *error) {
         m_toggleCallback();
     }
 
+    std::array<bool, 2> gripPressed{};
     if (m_summonButtonsCallback) {
         const vr::VRInputValueHandle_t sources[] = {m_leftHandSource, m_rightHandSource};
         std::vector<keyboard::ControllerButtonState> buttonStates;
@@ -175,9 +184,13 @@ bool SteamVrActionSource::poll(std::string *error) {
                 setError(error, "GetDigitalActionData(controller summon button)", result);
                 return false;
             }
-            buttonStates.push_back({kSummonActionPaths[index].button,
-                                    buttonData.bActive,
-                                    buttonData.bActive && buttonData.bState});
+            const bool pressed = buttonData.bActive && buttonData.bState;
+            buttonStates.push_back({kSummonActionPaths[index].button, buttonData.bActive, pressed});
+            if (kSummonActionPaths[index].button == keyboard::ControllerButton::LeftGrip) {
+                gripPressed[0] = pressed;
+            } else if (kSummonActionPaths[index].button == keyboard::ControllerButton::RightGrip) {
+                gripPressed[1] = pressed;
+            }
         }
         m_summonButtonsCallback(buttonStates);
     }
@@ -203,15 +216,35 @@ bool SteamVrActionSource::poll(std::string *error) {
                 sizeof(clickData),
                 sources[index]);
 
+            vr::InputAnalogActionData_t manipulationData{};
+            const vr::EVRInputError manipulationResult = m_input->GetAnalogActionData(
+                m_pointerManipulationAction,
+                &manipulationData,
+                sizeof(manipulationData),
+                sources[index]);
+
             keyboard::ControllerPointerSample &sample = samples.hands[index];
             sample.hand = hands[index];
             sample.poseActive = poseResult == vr::VRInputError_None && poseData.bActive && poseData.pose.bPoseIsValid;
             sample.selectPressed = clickResult == vr::VRInputError_None && clickData.bActive && clickData.bState;
+            sample.gripPressed = gripPressed[index];
+            // 스틱 바인딩이 없는 컨트롤러에서는 오버레이 조작 입력을 비활성으로 둔다.
+            sample.manipulationStickActive = manipulationResult == vr::VRInputError_None &&
+                                             manipulationData.bActive;
+            if (sample.manipulationStickActive) {
+                sample.manipulationStickX = manipulationData.x;
+                sample.manipulationStickY = manipulationData.y;
+            }
             if (sample.poseActive) {
                 const vr::HmdMatrix34_t &transform = poseData.pose.mDeviceToAbsoluteTracking;
                 sample.origin = {transform.m[0][3], transform.m[1][3], transform.m[2][3]};
                 // OpenVR 추적 포즈의 로컬 전방은 -Z 방향이다.
                 sample.direction = {-transform.m[0][2], -transform.m[1][2], -transform.m[2][2]};
+                for (std::size_t row = 0; row < 3; ++row) {
+                    for (std::size_t column = 0; column < 4; ++column) {
+                        sample.deviceToAbsoluteTracking[row * 4 + column] = transform.m[row][column];
+                    }
+                }
             }
         }
         m_pointerCallback(samples);

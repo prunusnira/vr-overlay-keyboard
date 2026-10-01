@@ -7,6 +7,7 @@
 #include <Windows.h>
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 class ImGuiHost final {
@@ -19,7 +20,7 @@ public:
 
     bool initialize(const wchar_t *windowTitle, std::string *error);
     bool processMessages();
-    void beginFrame();
+    void beginFrame(const std::function<void()> &pollPointerInput = {});
     // captureOverlayFrame이 true일 때만 OpenVR 계약 형식의 RGBA 픽셀을 읽어 반환한다.
     keyboard::ImageFrame renderFrame(bool captureOverlayFrame);
     void shutdown();

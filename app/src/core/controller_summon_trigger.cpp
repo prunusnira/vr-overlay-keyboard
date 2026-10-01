@@ -1,6 +1,7 @@
 #include "controller_summon_trigger.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace keyboard {
 
@@ -19,6 +20,21 @@ bool validateAppSettings(const AppSettings &settings, std::string *error) {
         break;
     default:
         return fail("Unknown application language.");
+    }
+
+    switch (settings.pointerHand) {
+    case ControllerHand::Left:
+    case ControllerHand::Right:
+        break;
+    default:
+        return fail("Choose a supported controller hand.");
+    }
+
+    if (!std::isfinite(settings.pointerOffsetXPercent) ||
+        !std::isfinite(settings.pointerOffsetYPercent) ||
+        settings.pointerOffsetXPercent < -10.0f || settings.pointerOffsetXPercent > 10.0f ||
+        settings.pointerOffsetYPercent < -10.0f || settings.pointerOffsetYPercent > 10.0f) {
+        return fail("Pointer offsets must be between -10 and 10 percent.");
     }
 
     if (settings.summonHoldMilliseconds > 3000) {

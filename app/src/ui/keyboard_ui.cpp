@@ -79,11 +79,13 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
     const keyboard::UiLanguage language = state.settings.uiLanguage;
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
+    // 자동 편집 포커스를 복원해도 전체 화면 창이 옵션 창을 덮지 않도록 표시 순서를 유지한다.
     constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoTitleBar |
         ImGuiWindowFlags_NoResize |
         ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoSavedSettings;
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoBringToFrontOnFocus;
     ImGui::Begin("VR Overlay Keyboard##main", nullptr, windowFlags);
     ImGui::BeginChild("main-content", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None);
 
@@ -91,7 +93,8 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
     ImGui::SameLine();
     if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::OpenOptions),
                               ImVec2(130.0f, 34.0f))) {
-        m_actions.setOptionsOpen(!state.optionsOpen);
+        // 열기 버튼은 반복 입력이나 중복 Release에도 닫히지 않도록 멱등 동작으로 둔다.
+        m_actions.setOptionsOpen(true);
     }
     ImGui::TextWrapped("%s", localized(language, keyboard::ui_text::TextId::Intro));
     ImGui::Separator();
@@ -172,6 +175,14 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
     if (m_diagnosticsExpanded) {
         ImGui::BeginChild("input-diagnostics", ImVec2(0.0f, 95.0f), ImGuiChildFlags_Borders,
                           ImGuiWindowFlags_NoScrollbar);
+        for (const keyboard::ControllerButtonState &button : state.controllerButtons) {
+            if (button.button == keyboard::ControllerButton::LeftGrip ||
+                button.button == keyboard::ControllerButton::RightGrip) {
+                ImGui::Text("%s: %s / %s",
+                    keyboard::ui_text::controllerButtonLabel(language, button.button).c_str(),
+                    button.active ? "bound" : "unbound", button.pressed ? "pressed" : "released");
+            }
+        }
         for (const std::string &line : m_log) {
             ImGui::TextWrapped("%s", line.c_str());
         }
@@ -185,6 +196,14 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
     ImGui::End();
     // 옵션 창도 같은 ImGui 프레임에 그려 데스크톱과 OpenVR 오버레이에 함께 보낸다.
     m_settingsUi.draw(state);
+    if (m_pointerCursorVisible) {
+        // ImGui 기본 마우스 커서는 VR 텍스처에 표시되지 않을 수 있어 포인터 위치를 직접 그린다.
+        ImDrawList *foreground = ImGui::GetForegroundDrawList();
+        const ImVec2 cursor(static_cast<float>(m_pointerCursorX), static_cast<float>(m_pointerCursorY));
+        foreground->AddCircleFilled(cursor, 10.0f, IM_COL32(12, 20, 30, 220), 20);
+        foreground->AddCircle(cursor, 10.0f, IM_COL32(245, 250, 255, 245), 20, 2.0f);
+        foreground->AddCircleFilled(cursor, 3.0f, IM_COL32(70, 190, 255, 255), 12);
+    }
     m_inputSession.endFrame();
 }
 
@@ -196,9 +215,15 @@ void KeyboardUi::dispatchPointerEvent(const keyboard::PointerEvent &event) {
     // OpenVR 및 Windows 마우스 어댑터가 같은 client pixel 이벤트를 사용해 동일 버튼 흐름으로 처리한다.
     switch (event.type) {
     case keyboard::PointerEventType::Move:
+        m_pointerCursorX = event.x;
+        m_pointerCursorY = event.y;
+        m_pointerCursorVisible = true;
         io.AddMousePosEvent(static_cast<float>(event.x), static_cast<float>(event.y));
         break;
     case keyboard::PointerEventType::Press: {
+        m_pointerCursorX = event.x;
+        m_pointerCursorY = event.y;
+        m_pointerCursorVisible = true;
         io.AddMousePosEvent(static_cast<float>(event.x), static_cast<float>(event.y));
         const int button = mouseButtonIndex(event.button);
         if (button >= 0) {
@@ -207,6 +232,9 @@ void KeyboardUi::dispatchPointerEvent(const keyboard::PointerEvent &event) {
         break;
     }
     case keyboard::PointerEventType::Release: {
+        m_pointerCursorX = event.x;
+        m_pointerCursorY = event.y;
+        m_pointerCursorVisible = true;
         io.AddMousePosEvent(static_cast<float>(event.x), static_cast<float>(event.y));
         const int button = mouseButtonIndex(event.button);
         if (button >= 0) {
@@ -215,9 +243,11 @@ void KeyboardUi::dispatchPointerEvent(const keyboard::PointerEvent &event) {
         break;
     }
     case keyboard::PointerEventType::Leave:
+        m_pointerCursorVisible = false;
         io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
         break;
     case keyboard::PointerEventType::Cancel:
+        m_pointerCursorVisible = false;
         io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
         io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
         io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);

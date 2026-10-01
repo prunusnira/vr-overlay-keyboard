@@ -31,7 +31,11 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
     ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Appearing);
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
         ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoSavedSettings;
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize;
+    // 옵션을 표시할 때 편집기의 ActiveId를 빼앗지 않는다. 메인 창도 포커스로 앞으로 올라오지 않는다.
     ImGui::Begin("Options##settings-window", nullptr, flags);
 
     keyboard::AppSettings edited = state.settings;
@@ -67,6 +71,38 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
         }
         ImGui::PopID();
     }
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerController));
+    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::LeftHand),
+                              ImVec2(140.0f, 36.0f),
+                              edited.pointerHand == keyboard::ControllerHand::Left)) {
+        edited.pointerHand = keyboard::ControllerHand::Left;
+        settingsChanged = true;
+    }
+    ImGui::SameLine();
+    if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::RightHand),
+                              ImVec2(140.0f, 36.0f),
+                              edited.pointerHand == keyboard::ControllerHand::Right)) {
+        edited.pointerHand = keyboard::ControllerHand::Right;
+        settingsChanged = true;
+    }
+    ImGui::TextWrapped("%s", localized(language, keyboard::ui_text::TextId::ControllerHandHint));
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerPositionAdjustment));
+    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerHorizontalOffset));
+    if (m_inputSession.sliderFloat("##pointer-offset-x", ImVec2(-FLT_MIN, 30.0f),
+                                   edited.pointerOffsetXPercent, -10.0f, 10.0f, "%.1f%%")) {
+        settingsChanged = true;
+    }
+    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerVerticalOffset));
+    if (m_inputSession.sliderFloat("##pointer-offset-y", ImVec2(-FLT_MIN, 30.0f),
+                                   edited.pointerOffsetYPercent, -10.0f, 10.0f, "%.1f%%")) {
+        settingsChanged = true;
+    }
+    ImGui::TextWrapped("%s", localized(language, keyboard::ui_text::TextId::PointerOffsetHint));
 
     ImGui::Spacing();
     ImGui::Separator();
