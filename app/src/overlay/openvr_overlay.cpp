@@ -54,6 +54,7 @@ bool OpenVrOverlay::initialize(std::string *error) {
     transform.m[2][2] = 1.0f;
     transform.m[2][3] = -kOverlayDistanceMeters;
 
+    // 일반 오버레이를 대시보드 탭이 아닌 HMD 기준 앞쪽 위치에 고정한다.
     const vr::VROverlayError transformError = m_overlay->SetOverlayTransformTrackedDeviceRelative(
         m_handle, vr::k_unTrackedDeviceIndex_Hmd, &transform);
     if (transformError != vr::VROverlayError_None) {
@@ -141,6 +142,7 @@ bool OpenVrOverlay::updateTexture(const keyboard::ImageFrame &frame, std::string
 
     m_textureWidth = frame.width;
     m_textureHeight = frame.height;
+    // 포인터 UV를 같은 RGBA 프레임의 픽셀 좌표로 환산할 수 있도록 OpenVR 입력 크기를 갱신한다.
     const vr::HmdVector2_t mouseScale{{static_cast<float>(m_textureWidth), static_cast<float>(m_textureHeight)}};
     const vr::VROverlayError scaleError = m_overlay->SetOverlayMouseScale(m_handle, &mouseScale);
     if (scaleError != vr::VROverlayError_None) {
@@ -178,6 +180,8 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
     if (m_hasCaptureHand) {
         sample = m_captureHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
         if (!sample) {
+            // 누르는 동안 손 추적이 사라지면 ImGui에 취소 이벤트를 보내 버튼 눌림 상태를 해제한다.
+            resetPointerState();
             return;
         }
         intersects = computePointerPosition(*sample, &x, &y);
@@ -298,6 +302,7 @@ bool OpenVrOverlay::computePointerPosition(const keyboard::ControllerPointerSamp
         return false;
     }
 
+    // OpenVR UV의 세로축과 화면 좌표계 방향을 맞춰 ImGui client pixel로 변환한다.
     const float pixelX = intersection.vUVs.v[0] * static_cast<float>(m_textureWidth);
     const float pixelY = (1.0f - intersection.vUVs.v[1]) * static_cast<float>(m_textureHeight);
     *x = static_cast<int>(std::clamp(pixelX, 0.0f, static_cast<float>(m_textureWidth - 1)));

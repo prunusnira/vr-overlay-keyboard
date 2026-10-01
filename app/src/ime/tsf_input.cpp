@@ -74,6 +74,7 @@ public:
             return S_OK;
         }
         m_activeElementId = elementId;
+        // Windows가 별도 후보 창을 띄우지 않게 하고, 후보 데이터는 앱 UI에서 직접 그린다.
         *show = FALSE;
         return S_OK;
     }
@@ -87,6 +88,7 @@ public:
         m_activeElementId = elementId;
         keyboard::CandidateSnapshot snapshot;
         snapshot.active = true;
+        // TSF 문자열은 UTF-16 BSTR이므로 앱 계약에 맞춰 UTF-8 snapshot으로 복사한다.
         UINT count = 0;
         if (SUCCEEDED(candidateElement->GetCount(&count))) {
             snapshot.candidates.reserve(count);
@@ -260,6 +262,7 @@ bool TsfInput::selectCandidate(std::uint32_t index, std::string *error) {
         return false;
     }
 
+    // 선택 인덱스를 먼저 적용한 뒤 Finalize를 호출해 현재 조합을 확정한다.
     result = behavior->SetSelection(index);
     if (SUCCEEDED(result)) {
         result = behavior->Finalize();

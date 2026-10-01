@@ -10,6 +10,7 @@ constexpr unsigned short kVrchatOscPort = 9000;
 constexpr std::size_t kMaximumChatboxCodePoints = 144;
 
 void appendOscString(std::string &packet, const std::string &value) {
+    // OSC 문자열은 NUL 종료 후 4바이트 경계까지 0으로 채운다.
     packet.append(value);
     packet.push_back('\0');
     while (packet.size() % 4 != 0) {
@@ -22,6 +23,7 @@ bool isContinuation(unsigned char value) {
 }
 
 bool countUtf8CodePoints(const std::string &text, std::size_t *count) {
+    // byte 수가 아니라 유효한 UTF-8 코드 포인트 수를 세어 Chatbox 글자 제한을 검사한다.
     std::size_t index = 0;
     std::size_t points = 0;
     while (index < text.size()) {
@@ -95,6 +97,7 @@ bool OscClient::sendChatboxText(const std::string &utf8Text, std::string *error)
 
     std::string packet;
     appendOscString(packet, "/chatbox/input");
+    // 인수는 문자열, send=false, notifications=false로 VRChat 입력란만 채운다.
     appendOscString(packet, ",sFF");
     appendOscString(packet, utf8Text);
 

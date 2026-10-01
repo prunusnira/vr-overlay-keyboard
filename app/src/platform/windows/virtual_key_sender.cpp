@@ -49,6 +49,7 @@ bool WindowsVirtualKeySender::send(keyboard::KeyCode key, bool withShift, std::s
         return false;
     }
 
+    // SendInput은 현재 포커스 창으로 전달되므로 다른 앱에 키를 보내지 않도록 전경 프로세스를 제한한다.
     const WORD virtualKey = toVirtualKey(key);
     if (virtualKey == 0) {
         if (error) {
@@ -60,6 +61,7 @@ bool WindowsVirtualKeySender::send(keyboard::KeyCode key, bool withShift, std::s
     std::array<INPUT, 4> inputs{};
     UINT count = 0;
     if (withShift) {
+        // Shift와 키 누름·뗌을 하나의 입력 배열로 보내 modifier가 눌린 채 남는 경우를 줄인다.
         appendKey(inputs, count, VK_SHIFT, 0, scanCode);
     }
     appendKey(inputs, count, virtualKey, 0, scanCode);
@@ -104,8 +106,13 @@ bool WindowsVirtualKeySender::requestForeground(std::uintptr_t nativeWindowHandl
         return false;
     }
 
-    SetForegroundWindow(window);
-    SetFocus(window);
+    // 이미 활성인 창에 같은 포커스를 다시 지정하지 않아 진행 중인 IME 세션을 건드리지 않는다.
+    if (GetForegroundWindow() != window) {
+        SetForegroundWindow(window);
+    }
+    if (GetForegroundWindow() == window && GetFocus() != window) {
+        SetFocus(window);
+    }
     if (GetForegroundWindow() != window) {
         if (error) {
             *error = "Windows did not grant foreground focus to this application.";

@@ -18,6 +18,7 @@ public:
     const AppUiState &state() const;
     void refresh();
     void setCandidates(const CandidateSnapshot &snapshot);
+    void setComposition(const CompositionSnapshot &snapshot);
     void setStatus(const std::string &message);
 
     bool toggleOverlay() override;

@@ -29,6 +29,7 @@ bool SteamVrActionSource::initialize(const std::string &absoluteManifestPath,
         return false;
     }
 
+    // 시작 시 manifest의 문자열 경로를 OpenVR handle로 바꿔 poll마다 경로 검색을 반복하지 않는다.
     vr::EVRInputError result = m_input->SetActionManifestPath(absoluteManifestPath.c_str());
     if (result != vr::VRInputError_None) {
         setError(error, "SetActionManifestPath", result);
@@ -97,6 +98,7 @@ bool SteamVrActionSource::poll(std::string *error) {
     }
 
     vr::VRActiveActionSet_t activeSet{};
+    // 액션 데이터를 읽기 전에 현재 앱의 액션 세트를 SteamVR Input에 반영한다.
     activeSet.ulActionSet = m_actionSet;
     activeSet.ulRestrictedToDevice = vr::k_ulInvalidInputValueHandle;
     activeSet.ulSecondaryActionSet = vr::k_ulInvalidActionSetHandle;
@@ -116,6 +118,7 @@ bool SteamVrActionSource::poll(std::string *error) {
         return false;
     }
 
+    // bChanged와 눌림 상태를 함께 확인해 버튼을 누르고 있는 동안 토글이 반복되지 않게 한다.
     if (actionData.bActive && actionData.bState && actionData.bChanged && m_toggleCallback) {
         m_toggleCallback();
     }
@@ -148,6 +151,7 @@ bool SteamVrActionSource::poll(std::string *error) {
             if (sample.poseActive) {
                 const vr::HmdMatrix34_t &transform = poseData.pose.mDeviceToAbsoluteTracking;
                 sample.origin = {transform.m[0][3], transform.m[1][3], transform.m[2][3]};
+                // OpenVR 추적 포즈의 로컬 전방은 -Z 방향이다.
                 sample.direction = {-transform.m[0][2], -transform.m[1][2], -transform.m[2][2]};
             }
         }

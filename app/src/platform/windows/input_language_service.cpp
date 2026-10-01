@@ -33,6 +33,7 @@ std::string localizedLanguageName(HKL layout) {
 }
 
 std::vector<keyboard::InputLanguage> WindowsInputLanguageService::loadedLanguages() {
+    // 현재 스레드에 로드된 키보드 레이아웃을 열거하고, UI에는 OS 현지화 이름을 보여준다.
     m_layouts.clear();
     const int count = GetKeyboardLayoutList(0, nullptr);
     if (count <= 0) {
@@ -71,6 +72,7 @@ bool WindowsInputLanguageService::activate(const std::string &id, std::string *e
         return false;
     }
 
+    // 화면에는 내부 ID만 전달하고, 실제 HKL 값은 이 서비스 안에서만 보관한다.
     const HKL layout = reinterpret_cast<HKL>(found->second);
     if (!ActivateKeyboardLayout(layout, 0)) {
         if (error) {

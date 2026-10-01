@@ -14,6 +14,7 @@ KeyboardApplication::KeyboardApplication(OverlayControlPort &overlay,
       m_virtualKeys(virtualKeys),
       m_candidates(candidates),
       m_chatbox(chatbox) {
+    // 구체 구현은 생성자로 주입해 코어가 Windows나 OpenVR SDK에 의존하지 않게 한다.
     m_state.overlayVisible = m_overlay.isVisible();
 }
 
@@ -27,6 +28,7 @@ const AppUiState &KeyboardApplication::state() const {
 }
 
 void KeyboardApplication::refresh() {
+    // 화면에 오래된 상태가 남지 않도록 외부 어댑터의 현재값을 다시 읽는다.
     m_state.overlayVisible = m_overlay.isVisible();
     m_state.inputLanguages = m_languages.loadedLanguages();
     publish();
@@ -37,12 +39,18 @@ void KeyboardApplication::setCandidates(const CandidateSnapshot &snapshot) {
     publish();
 }
 
+void KeyboardApplication::setComposition(const CompositionSnapshot &snapshot) {
+    m_state.composition = snapshot;
+    publish();
+}
+
 void KeyboardApplication::setStatus(const std::string &message) {
     m_state.status = message;
     publish();
 }
 
 bool KeyboardApplication::toggleOverlay() {
+    // UI 버튼과 SteamVR 액션이 동일한 표시·숨김 경로를 사용한다.
     std::string error;
     const bool succeeded = m_overlay.isVisible()
         ? m_overlay.hide(&error)
@@ -107,6 +115,7 @@ void KeyboardApplication::publish() {
 }
 
 void KeyboardApplication::setFailure(const std::string &message) {
+    // 실패 문구를 한 상태 경로로 게시해 UI와 진단 로그가 같은 결과를 보게 한다.
     m_state.status = message.empty() ? "The requested action failed." : message;
     publish();
 }

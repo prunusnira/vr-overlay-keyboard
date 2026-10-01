@@ -1,6 +1,6 @@
 # VRChat용 SteamVR 오버레이 키보드 기획
 
-상태: 첫 프로토타입 구현 완료. 사용자는 프로토타입의 SteamVR 대시보드 오버레이에서 컨트롤러 포인터 입력과 VRChat Chatbox OSC 입력이 동작하는 것을 확인했고, 입력 언어 표시 변경과 일본어 IME 모드 전환도 확인했다. 본격 개발은 `app/`에 새 CMake 프로젝트를 만들고 이 검증된 사용자 흐름을 모듈 구조와 일반 오버레이 실행 방식에 맞춰 다시 구현한다. 프로토타입 코드는 제품 앱으로 옮기거나 수정하지 않는다. 새 앱에서는 기존 확인 흐름을 회귀 기준으로 삼고, 대시보드 없는 표시·숨김과 미해결 입력 경로를 추가로 검증한다. 한국어 가상 키 입력은 자모별로 커밋되는 문제가 남아 있고, TSF 후보 선택·중국어 입력·다국어 OSC 왕복은 확인되지 않았다. 상세 결과는 [프로토타입 README](../prototype/windows-ime-overlay/README.md)에 기록했다.
+상태: 프로토타입의 확인된 흐름을 이어받은 Dear ImGui 기반 Windows 앱을 `app/`에 구성했고 Windows x64 Release 빌드가 성공했다. 현재 소스는 Win32 창·OpenGL3 렌더러, 일반 OpenVR 오버레이, SteamVR Input, Windows 언어·TSF 어댑터와 Chatbox OSC를 연결한다. HMD 동작은 확인이 필요하다. 프로토타입 코드는 제품 앱으로 옮기거나 수정하지 않는다. 기존 확인 흐름은 회귀 기준으로 삼고, 대시보드 없는 표시·숨김과 미해결 입력 경로를 추가로 검증한다. 한국어 가상 키 입력은 자모별로 커밋되는 문제가 남아 있고, TSF 후보 선택·중국어 입력·다국어 OSC 왕복은 확인되지 않았다. 상세 결과는 [프로토타입 README](../prototype/windows-ime-overlay/README.md)에 기록했다.
 
 ## 목표와 범위
 
@@ -36,17 +36,17 @@ VRChat 문서는 `/chatbox/input`의 `send=false`가 키보드를 열어 문장�
 
 변환 후보는 오버레이를 사용하는 동안 헤드셋에서 읽고 선택할 수 있어야 한다. OpenVR 오버레이는 앱이 제공한 화면 텍스처를 표시하므로, Windows가 별도 창으로 그리는 기본 IME 후보창에 의존하지 않는다. 앱이 후보 데이터를 받아 오버레이 화면 안에 직접 그린다.
 
-## 제안 기술 구성
+## 현재 기술 구성
 
 | 구성 요소 | 역할 | 현재 선택 |
 | --- | --- | --- |
-| C++와 Qt | 입력란, 가상 키, 입력 상태 표시 | Qt 화면은 우선 검토하되 Qt 입력란과 TSF의 결합은 미확인 |
+| C++와 Dear ImGui, Win32, OpenGL3 | 데스크톱 UI, 입력란, 가상 키, 상태 표시와 OpenVR용 프레임 생성 | 후보 영역은 고정 높이·가로 스크롤로 배치하고 오버레이 표시 중 약 30Hz로 프레임을 전달한다. IME 조합과 readback 성능은 검증 필요 |
 | Windows IME와 TSF | 한글 조합, 일본어와 중국어 변환 및 후보 데이터 제공 | Windows 입력기를 사용하려는 후보 경로. 현행 입력기별 UI-less 후보 지원은 미확인 |
-| SteamVR Input | 토글 커맨드와 컨트롤러 포인터 자세·클릭 입력을 전달 | 액션 manifest와 입력 어댑터 초안을 구현. 컨트롤러 바인딩과 대시보드가 닫힌 상태의 수신은 미검증 |
-| OpenVR `IVROverlay` | 대시보드와 독립적인 오버레이 표시·숨김, HMD 기준 위치, 컨트롤러 포인터 이벤트 | 일반 오버레이 어댑터 초안은 `ComputeOverlayIntersection`으로 포인터 좌표를 계산한다. HMD 동작은 미검증 |
+| SteamVR Input | 토글 커맨드와 컨트롤러 포인터 자세·클릭 입력을 전달 | 액션 manifest와 입력 어댑터를 구현했다. 컨트롤러 바인딩과 대시보드가 닫힌 상태의 수신은 미검증 |
+| OpenVR `IVROverlay` | 대시보드와 독립적인 오버레이 표시·숨김, HMD 기준 위치, 컨트롤러 포인터 이벤트 | 현재 어댑터가 `ComputeOverlayIntersection`으로 포인터 좌표를 계산한다. HMD 동작은 미검증 |
 | OSC 클라이언트 | 완성된 문장을 VRChat에 전달 | `/chatbox/input`으로 전송 |
 
-Valve의 `IVROverlay`는 2D 이미지를 VR 화면 위에 표시하고 오버레이 입력 이벤트를 받는다. 공식 `helloworldoverlay` 예제는 Qt를 이용해 오버레이 화면과 입력을 다룬다. Qt의 입력 메서드 이벤트는 조합 중 문자열과 확정 문자열을 구분한다. [OpenVR 오버레이 개요](https://github.com/ValveSoftware/openvr/wiki/IVROverlay_Overview), [Valve 오버레이 예제](https://github.com/ValveSoftware/openvr/tree/master/samples/helloworldoverlay), [Qt 입력 메서드 이벤트](https://doc.qt.io/qt-6/qinputmethodevent.html)
+Valve의 `IVROverlay`는 2D 이미지를 VR 화면 위에 표시하고 오버레이 입력 이벤트를 받는다. 현재 앱은 Dear ImGui의 Win32 입력 backend와 OpenGL3 renderer로 데스크톱 프레임을 만들고, 프레임버퍼를 RGBA 이미지로 읽어 기존 OpenVR 어댑터에 전달한다. 이 구조는 Qt 런타임에 의존하지 않지만 OpenGL readback 비용과 IME 조합 동작은 별도 확인이 필요하다. [OpenVR 오버레이 개요](https://github.com/ValveSoftware/openvr/wiki/IVROverlay_Overview), [Dear ImGui backends](https://github.com/ocornut/imgui/blob/master/docs/BACKENDS.md), [Dear ImGui examples](https://github.com/ocornut/imgui/blob/master/docs/EXAMPLES.md)
 
 일반 오버레이의 표시·숨김, 컨트롤러 포인터 입력, Windows 텍스트 입력 포커스와 IME 키 전달은 서로 다른 경로다. 일반 Windows 창에서 동작하는 입력란을 OpenVR 오버레이에 표시하는 것만으로 이 기능들이 자동 연결된다고 가정하지 않는다. 특히 현재 프로토타입의 `SendInput` 경로는 앱이 Windows 전경 프로세스여야 한다.
 
@@ -56,14 +56,16 @@ Windows TSF의 UI-less mode는 앱이 IME의 후보 UI를 대신 그리도록 �
 
 컨트롤러로 후보를 선택할 때는 활성 IME가 `ITfCandidateListUIElementBehavior`를 제공하면 선택 변경과 확정 API를 사용할 수 있다. 이 인터페이스의 제공 여부와 실제 동작은 사용할 IME에서 확인해야 한다. 중국어 입력기의 읽기 정보가 조합 문자열과 별도로 제공되는 경우에는 `ITfReadingInformationUIElement`도 표시 대상에 포함한다. [TSF 후보 선택 인터페이스](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nn-msctf-itfcandidatelistuielementbehavior), [Microsoft TSF UI-less mode](https://learn.microsoft.com/en-us/windows/win32/tsf/uiless-mode-overview)
 
-앱이 이 방식으로 IME 후보 데이터를 받으려면 해당 입력기가 TSF UI-less mode를 지원해야 한다. 모든 Windows 입력기가 이 기능을 제공한다고 단정할 수 없고, 현재 Microsoft 일본어 및 중국어 IME의 호환성은 아직 확인되지 않았다. 특히 Qt의 Windows 입력 처리는 IMM 계열 API를 사용하므로 Qt 입력란과 별도 TSF 후보 수신 코드가 함께 동작하는지도 확인해야 한다. [Qt Windows 입력 컨텍스트 소스](https://github.com/qt/qtbase/blob/dev/src/plugins/platforms/windows/qwindowsinputcontext.cpp)
+앱이 이 방식으로 IME 후보 데이터를 받으려면 해당 입력기가 TSF UI-less mode를 지원해야 한다. 모든 Windows 입력기가 이 기능을 제공한다고 단정할 수 없고, 현재 Microsoft 일본어 및 중국어 IME의 호환성은 아직 확인되지 않았다. 현재 UI는 Dear ImGui 입력란의 편집 문자열과 TSF 후보 snapshot을 별도로 보유한다. Win32 backend, ImGui 편집 문자열과 TSF 후보 sink가 한글·일본어·중국어 조합 및 선택에서 함께 동작하는지 Windows에서 확인해야 한다. [Dear ImGui backends](https://github.com/ocornut/imgui/blob/master/docs/BACKENDS.md)
+
+2026-10-01 앱에서 IMM 조합 문자열과 확정 문자열을 분리하고 활성 앱의 입력 포커스를 유지한 뒤, 사용자가 데스크톱 일본어 입력·변환을 정상으로 확인했다. 한국어는 마우스 클릭마다 자모가 확정되는 현상이 남아 앱 UI 스레드에서 가상 버튼 마우스 클릭을 컨트롤러와 같은 포인터 이벤트로 바꾸는 어댑터를 추가했다. 해당 한국어 수정과 HMD 동작은 미검증 상태이며, 일본어 TSF 후보 클릭·다국어 OSC 전체 왕복도 이 보고만으로 통과 처리하지 않는다.
 
 현재 확인이 필요한 항목은 다음과 같다.
 
 - SteamVR 오버레이를 조작하는 동안 오버레이 앱의 입력란이 Windows IME 포커스를 유지하는가?
 - 가상 키 입력으로 한글 조합 과정 전체와 일본어·중국어 변환이 동작하는가?
 - 사용할 일본어 및 중국어 IME가 TSF UI-less mode에서 후보 목록과 선택 동작을 제공하는가?
-- Qt 입력란과 별도 TSF 후보 수신 코드를 같은 입력 흐름으로 연결할 수 있는가? 필요하면 앱이 TSF 텍스트 저장소를 직접 구현해야 하는가?
+- Dear ImGui 편집 문자열과 별도 TSF 후보 수신 코드를 같은 입력 흐름으로 연결할 수 있는가? 실패하면 앱이 TSF 텍스트 저장소를 직접 구현해야 하는가?
 - 중국어 간체와 번체 중 어느 범위까지 필수로 지원할 것인가?
 
 각 항목의 공식 근거, 현재 판정과 실기기 확인 조건은 [기술 조사](TECHNICAL_FEASIBILITY.md)에 있다. 문서 조사만으로 미확인 항목을 통과 처리하지 않는다.
@@ -71,12 +73,12 @@ Windows TSF의 UI-less mode는 앱이 IME의 후보 UI를 대신 그리도록 �
 ## 실기기 확인과 구현 순서
 
 1. **일반 오버레이와 커맨드 판정:** 대시보드가 닫힌 상태에서 SteamVR Input 액션으로 일반 오버레이를 표시·숨김하고, HMD 기준 위치와 컨트롤러 포인터 조작을 확인한다.
-2. **텍스트 입력 경로 판정:** Windows와 HMD에서 [기술 조사의 실기기 판정 항목](TECHNICAL_FEASIBILITY.md#windows-실기기에서-필요한-판정)을 확인한다. VRChat에 게임 포커스가 있는 동안의 입력 포커스, 영어·한글 조합, 일본어 및 필요한 경우 중국어 후보 표시·선택을 최소 확인 프로그램으로 판정한다. 이 확인이 끝나기 전에는 Qt와 TSF의 결합 방식을 확정하지 않는다.
-3. **새 앱과 모듈 구현:** `app/`에 신규 CMake 프로젝트를 만들고, 판정 결과에 따라 앱 코어, 커맨드 입력, 키보드 UI, 텍스트 입력, Windows 언어·TSF 어댑터, OpenVR 어댑터와 OSC 모듈을 새로 구현한다. 기존 프로토타입 소스는 수정하거나 이동하지 않는다. 구체적인 책임과 의존성 원칙은 [모듈 아키텍처](ARCHITECTURE.md)에 따른다.
+2. **텍스트 입력 경로 판정:** Windows와 HMD에서 [기술 조사의 실기기 판정 항목](TECHNICAL_FEASIBILITY.md#windows-실기기에서-필요한-판정)을 확인한다. VRChat에 게임 포커스가 있는 동안의 입력 포커스, 영어·한글 조합, 일본어 및 필요한 경우 중국어 후보 표시·선택을 Dear ImGui 앱에서 판정한다. 이 확인 결과에 따라 편집 문자열과 TSF 문서 상태의 책임을 확정한다.
+3. **현재 앱 구조 보완:** `app/`의 Dear ImGui 기반 CMake 프로젝트와 앱 코어, 커맨드 입력, 키보드 UI, Windows 언어·TSF 어댑터, OpenVR 어댑터와 OSC 모듈을 실기기 판정 결과에 맞춰 보완한다. 기존 프로토타입 소스는 수정하거나 이동하지 않는다. 구체적인 책임과 의존성 원칙은 [모듈 아키텍처](ARCHITECTURE.md)에 따른다.
 4. **VRChat 연결:** 확정한 문장을 OSC로 Chatbox 입력란에 채우고, 다국어 왕복과 전체 흐름을 확인한다.
 
 VRChat 공식 문서의 Chatbox 제한은 최대 144자와 최대 9줄이다. 줄 수에는 직접 입력한 줄바꿈과 자동 줄바꿈이 포함된다. 입력란과 전송 동작에 이 제한을 반영해야 한다. [VRChat Chatbox OSC 입력](https://docs.vrchat.com/docs/osc-as-input-controller)
 
 ## 라이선스 메모
 
-현재 저장소의 `LICENSE`는 MIT다. Qt Virtual Keyboard 모듈은 공식 문서에서 GPLv3 또는 상용 라이선스로 안내한다. 현재 제안은 Windows IME 사용을 우선하며, 실제 배포에 사용할 Qt 구성 요소와 다른 의존성의 라이선스는 구현 시 확인한다. [Qt 라이선스 안내](https://doc.qt.io/qt-6/licensing.html)
+현재 저장소의 `LICENSE`와 Dear ImGui는 MIT다. Dear ImGui의 저작권·MIT 라이선스 전문은 `app/THIRD_PARTY_NOTICES.md`에 보존하고 빌드 출력 폴더에도 복사한다. Windows IME를 직접 사용하며 Qt 프레임워크 의존성은 두지 않는다. [Dear ImGui MIT License](https://github.com/ocornut/imgui/blob/master/LICENSE.txt)
