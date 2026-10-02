@@ -26,6 +26,12 @@ public:
     bool verticalScrollbar(const char *label, const ImVec2 &size,
                            float maxScroll, float visibleHeight, float &scroll);
     void clearEditor(std::string &text);
+    bool hasActiveEditorState() const;
+    bool editorCursorMatchesRange(int start, int end) const;
+    bool editEditorText(std::string &text, int replaceStart, int replaceEnd,
+                        const std::string &replacement, const std::string &activeSuffix,
+                        int &activeStart, int &activeEnd);
+    bool backspaceEditor(std::string &text);
     bool isVirtualControlAt(int x, int y) const;
 
 private:

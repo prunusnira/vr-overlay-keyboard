@@ -100,6 +100,28 @@ void drawKeyLegend(const keyboard::KeyboardKeyDefinition &key,
     drawList->AddText(ImGui::GetFont(), 15.0f, labelPosition,
                       ImGui::GetColorU32(ImGuiCol_Text), primary);
 }
+
+std::string directVirtualCharacter(const keyboard::KeyboardKeyDefinition &key,
+                                   keyboard::KeyboardLayoutKind layout,
+                                   bool withShift,
+                                   bool capsLockEnabled) {
+    const char *primary = keyboard::primaryKeyLabel(key, layout);
+    const char *shifted = keyboard::secondaryKeyLabel(key, layout);
+    if (layout == keyboard::KeyboardLayoutKind::KoreanDubeolsik) {
+        return withShift && shifted && *shifted ? shifted : primary;
+    }
+
+    if (key.code >= keyboard::KeyCode::A && key.code <= keyboard::KeyCode::Z) {
+        const bool uppercase = withShift != capsLockEnabled;
+        const char letter = static_cast<char>(
+            (uppercase ? 'A' : 'a') + static_cast<int>(key.code) - static_cast<int>(keyboard::KeyCode::A));
+        return std::string(1, letter);
+    }
+    if (withShift && shifted && *shifted) {
+        return shifted;
+    }
+    return primary;
+}
 }
 
 KeyboardUi::KeyboardUi(keyboard::KeyboardActions &actions)
@@ -132,11 +154,15 @@ KeyboardUi::KeyboardUi(keyboard::KeyboardActions &actions)
     style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.20f, 0.45f, 0.39f, 1.0f);
     style.Colors[ImGuiCol_SliderGrab] = ImVec4(0.21f, 0.75f, 0.65f, 1.0f);
     style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.43f, 0.88f, 0.75f, 1.0f);
-    appendLog("Ready. Input focus is retained while this app is active.");
+    appendLog("Ready. VR key presses type here without changing Windows focus.");
 }
 
 void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeground) {
     m_inputSession.beginFrame();
+    if (m_virtualKeyReleaseNextFrame != ImGuiKey_None) {
+        ImGui::GetIO().AddKeyEvent(m_virtualKeyReleaseNextFrame, false);
+        m_virtualKeyReleaseNextFrame = ImGuiKey_None;
+    }
     m_applicationIsForeground = applicationIsForeground;
     if (state.status != m_lastStatus && !state.status.empty()) {
         m_lastStatus = state.status;
@@ -227,10 +253,14 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - 154.0f);
         if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::FillChatbox),
                                   ImVec2(154.0f, 30.0f))) {
+            resetHangulComposition();
             if (state.composition.active) {
                 // 변환 중이면 Enter를 IME에 보내고, 조합 종료와 편집 버퍼 반영 뒤에 전송한다.
-                m_submitAfterComposition = m_editorFocusArmed &&
+                m_submitAfterComposition = m_applicationIsForeground && m_editorFocusArmed &&
                     m_actions.sendKey(keyboard::KeyCode::Enter, false);
+                if (!m_submitAfterComposition) {
+                    appendLog("Finish the active IME composition in this app before filling Chatbox.");
+                }
             } else if (m_actions.submitChatboxText(m_text)) {
                 appendLog("OSC request sent to 127.0.0.1:9000: /chatbox/input (send=false).");
             }
@@ -239,11 +269,9 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
             "##chatbox-text", m_text, ImVec2(-FLT_MIN, 78.0f),
             applicationIsForeground || m_focusEditorNextFrame);
         m_focusEditorNextFrame = false;
-        // VR 포인터 입력은 OS 포커스를 바꾸지 않으므로 편집창을 누를 때 실제 창도 전경으로 요청한다.
-        if (editor.clicked) {
-            requestEditorFocus();
-        }
+        // 오버레이 포인터 클릭은 ImGui 편집창만 활성화하고 Windows 전경 포커스는 바꾸지 않는다.
         m_editorFocusArmed = editor.active;
+        processHangulInput();
         if (m_submitAfterComposition && !state.composition.active && editor.active) {
             m_submitAfterComposition = false;
             if (m_actions.submitChatboxText(m_text)) {
@@ -283,6 +311,8 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::ClearInput),
                                   ImVec2(138.0f, 34.0f))) {
             m_submitAfterComposition = false;
+            resetHangulComposition();
+            m_pendingHangulInput.clear();
             if (m_compositionCancelCallback) {
                 m_compositionCancelCallback();
             }
@@ -404,13 +434,135 @@ void KeyboardUi::setCompositionCancelCallback(std::function<void()> callback) {
 }
 
 void KeyboardUi::sendKey(keyboard::KeyCode key, bool withShift) {
-    // 편집창 활성 여부는 UI에서 확인하고, 현재 전경 프로세스는 SendInput 직전에 Windows 어댑터가 검사한다.
-    if (!m_editorFocusArmed) {
-        appendLog("Key blocked: click the input field or Focus input before sending keys.");
+    // IME 전환 키만 Windows에 보낸다. 일반 문자는 오버레이 앱의 ImGui 입력란에 직접 넣는다.
+    if (!m_applicationIsForeground || !m_editorFocusArmed) {
+        appendLog("IME mode key skipped because this app does not own Windows input focus.");
         return;
     }
-    // 가상 버튼은 입력창의 ActiveId를 보존하므로 매 키 입력 뒤 재포커스하지 않는다.
     m_actions.sendKey(key, withShift);
+}
+
+void KeyboardUi::queueVirtualText(const std::string &text) {
+    if (text.empty()) {
+        return;
+    }
+    // ImGui 입력 이벤트는 다음 NewFrame에서 편집 위젯에 소비되므로 OS 전경 포커스와 무관하다.
+    ImGui::GetIO().AddInputCharactersUTF8(text.c_str());
+    m_editorFocusArmed = true;
+    m_focusEditorNextFrame = true;
+}
+
+void KeyboardUi::queueVirtualKey(ImGuiKey key) {
+    if (m_virtualKeyReleaseNextFrame != ImGuiKey_None) {
+        ImGui::GetIO().AddKeyEvent(m_virtualKeyReleaseNextFrame, false);
+    }
+    ImGui::GetIO().AddKeyEvent(key, true);
+    m_virtualKeyReleaseNextFrame = key;
+    m_editorFocusArmed = true;
+    m_focusEditorNextFrame = true;
+}
+
+void KeyboardUi::queueHangulJamo(const std::string &jamo) {
+    if (jamo.empty()) {
+        return;
+    }
+    m_pendingHangulInput.push_back({PendingHangulInput::Kind::Jamo, jamo});
+    m_editorFocusArmed = true;
+    m_focusEditorNextFrame = true;
+}
+
+void KeyboardUi::queueHangulBackspace() {
+    m_pendingHangulInput.push_back({PendingHangulInput::Kind::Backspace, {}});
+    m_editorFocusArmed = true;
+    m_focusEditorNextFrame = true;
+}
+
+void KeyboardUi::processHangulInput() {
+    if (m_pendingHangulInput.empty()) {
+        return;
+    }
+    if (!m_editorFocusArmed || !m_inputSession.hasActiveEditorState()) {
+        m_focusEditorNextFrame = true;
+        return;
+    }
+
+    std::size_t consumed = 0;
+    for (; consumed < m_pendingHangulInput.size(); ++consumed) {
+        const PendingHangulInput &input = m_pendingHangulInput[consumed];
+        if (m_hangulComposer.hasActiveComposition() &&
+            (!m_hangulRangeActive ||
+             !m_inputSession.editorCursorMatchesRange(m_hangulRangeStart, m_hangulRangeEnd))) {
+            resetHangulComposition();
+        }
+
+        if (input.kind == PendingHangulInput::Kind::Backspace) {
+            if (m_hangulComposer.hasActiveComposition()) {
+                const keyboard::HangulComposer::Edit edit = m_hangulComposer.backspace();
+                if (!applyHangulEdit(edit)) {
+                    resetHangulComposition();
+                    if (!m_inputSession.backspaceEditor(m_text)) {
+                        break;
+                    }
+                }
+            } else {
+                m_hangulRangeActive = false;
+                if (!m_inputSession.backspaceEditor(m_text)) {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        const keyboard::HangulComposer::Edit edit = m_hangulComposer.press(input.text);
+        if (!applyHangulEdit(edit)) {
+            resetHangulComposition();
+            int unusedStart = -1;
+            int unusedEnd = -1;
+            if (!m_inputSession.editEditorText(m_text, -1, -1, input.text, input.text,
+                                               unusedStart, unusedEnd)) {
+                break;
+            }
+        }
+    }
+
+    m_pendingHangulInput.erase(m_pendingHangulInput.begin(),
+                               m_pendingHangulInput.begin() + static_cast<std::ptrdiff_t>(consumed));
+    if (!m_pendingHangulInput.empty()) {
+        m_focusEditorNextFrame = true;
+    }
+}
+
+bool KeyboardUi::applyHangulEdit(const keyboard::HangulComposer::Edit &edit) {
+    if (edit.action == keyboard::HangulComposer::EditAction::None) {
+        return true;
+    }
+    const int replaceStart = edit.action == keyboard::HangulComposer::EditAction::ReplaceActive
+        ? m_hangulRangeStart
+        : -1;
+    const int replaceEnd = edit.action == keyboard::HangulComposer::EditAction::ReplaceActive
+        ? m_hangulRangeEnd
+        : -1;
+    if (edit.action == keyboard::HangulComposer::EditAction::ReplaceActive && !m_hangulRangeActive) {
+        return false;
+    }
+
+    int activeStart = -1;
+    int activeEnd = -1;
+    if (!m_inputSession.editEditorText(m_text, replaceStart, replaceEnd, edit.text,
+                                       edit.activeText, activeStart, activeEnd)) {
+        return false;
+    }
+    m_hangulRangeActive = activeStart >= 0 && activeEnd >= activeStart;
+    m_hangulRangeStart = m_hangulRangeActive ? activeStart : -1;
+    m_hangulRangeEnd = m_hangulRangeActive ? activeEnd : -1;
+    return true;
+}
+
+void KeyboardUi::resetHangulComposition() {
+    m_hangulComposer.commit();
+    m_hangulRangeActive = false;
+    m_hangulRangeStart = -1;
+    m_hangulRangeEnd = -1;
 }
 
 void KeyboardUi::appendLog(std::string message) {
@@ -451,6 +603,8 @@ void KeyboardUi::drawInputLanguages(const keyboard::AppUiState &state,
             ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.20f, 0.45f, 0.39f, 1.0f));
         }
         if (m_inputSession.button(localized(uiLanguage, buttons[index].text), ImVec2(-FLT_MIN, 34.0f), active)) {
+            resetHangulComposition();
+            m_directHangulModeOverrideActive = false;
             std::string error;
             const keyboard::InputLanguageActivationResult result =
                 m_actions.selectKeyboardLanguage(buttons[index].language, &error);
@@ -551,7 +705,24 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
     const keyboard::InputLanguageKind language = active
         ? active->kind
         : keyboard::InputLanguageKind::Other;
-    const keyboard::KeyboardLayoutKind layout = keyboard::keyboardLayoutFor(language, state.imeMode);
+    if (m_applicationIsForeground || language != keyboard::InputLanguageKind::Korean) {
+        m_directHangulModeOverrideActive = false;
+    }
+    keyboard::KeyboardLayoutKind layout = keyboard::keyboardLayoutFor(language, state.imeMode);
+    if (language == keyboard::InputLanguageKind::Korean && m_directHangulModeOverrideActive) {
+        layout = m_directHangulModeOverrideEnabled
+            ? keyboard::KeyboardLayoutKind::KoreanDubeolsik
+            : keyboard::KeyboardLayoutKind::Qwerty;
+    }
+    const bool useWindowsIme = m_applicationIsForeground && m_editorFocusArmed &&
+        state.imeMode.available &&
+        (language == keyboard::InputLanguageKind::Korean ||
+         language == keyboard::InputLanguageKind::Japanese);
+    const bool useDirectHangul = !useWindowsIme &&
+        layout == keyboard::KeyboardLayoutKind::KoreanDubeolsik;
+    if (!useDirectHangul) {
+        resetHangulComposition();
+    }
     const std::vector<keyboard::KeyboardRow> &rows = keyboard::keyboardRows();
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float availableWidth = ImGui::GetContentRegionAvail().x;
@@ -596,24 +767,53 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
                 const ImVec2 maximum = ImGui::GetItemRectMax();
                 drawKeyLegend(key, layout, minimum, maximum);
                 if (activated) {
-                    sendKey(key.code, m_shiftForNextKey);
+                    if (useWindowsIme) {
+                        resetHangulComposition();
+                        sendKey(key.code, m_shiftForNextKey);
+                    } else if (useDirectHangul && key.koreanLabel) {
+                        const char *primary = keyboard::primaryKeyLabel(key, layout);
+                        const char *shifted = keyboard::secondaryKeyLabel(key, layout);
+                        queueHangulJamo(m_shiftForNextKey && shifted && *shifted ? shifted : primary);
+                    } else {
+                        resetHangulComposition();
+                        queueVirtualText(directVirtualCharacter(
+                            key, layout, m_shiftForNextKey, m_capsLockEnabled));
+                    }
                     m_shiftForNextKey = false;
                 }
                 break;
             }
             case keyboard::KeyboardKeyKind::Backspace:
                 if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Backspace), size)) {
-                    sendKey(key.code);
+                    if (useWindowsIme) {
+                        resetHangulComposition();
+                        sendKey(key.code);
+                    } else if (useDirectHangul) {
+                        queueHangulBackspace();
+                    } else {
+                        resetHangulComposition();
+                        queueVirtualKey(ImGuiKey_Backspace);
+                    }
                 }
                 break;
             case keyboard::KeyboardKeyKind::CapsLock:
                 if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::CapsLock), size)) {
-                    sendKey(key.code);
+                    if (useWindowsIme) {
+                        sendKey(key.code);
+                    } else {
+                        m_capsLockEnabled = !m_capsLockEnabled;
+                    }
                 }
                 break;
             case keyboard::KeyboardKeyKind::Enter:
                 if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Enter), size)) {
-                    sendKey(key.code);
+                    if (useWindowsIme && state.composition.active) {
+                        resetHangulComposition();
+                        sendKey(key.code);
+                    } else {
+                        resetHangulComposition();
+                        queueVirtualKey(ImGuiKey_Enter);
+                    }
                 }
                 break;
             case keyboard::KeyboardKeyKind::Shift:
@@ -625,18 +825,33 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
                 break;
             case keyboard::KeyboardKeyKind::KoreanMode:
                 if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::KoreanMode), size,
-                                          false, language != keyboard::InputLanguageKind::Japanese)) {
-                    sendKey(key.code);
+                                          layout == keyboard::KeyboardLayoutKind::KoreanDubeolsik,
+                                          language != keyboard::InputLanguageKind::Japanese)) {
+                    resetHangulComposition();
+                    if (!m_applicationIsForeground && language == keyboard::InputLanguageKind::Korean) {
+                        m_directHangulModeOverrideActive = true;
+                        m_directHangulModeOverrideEnabled =
+                            layout != keyboard::KeyboardLayoutKind::KoreanDubeolsik;
+                    } else {
+                        sendKey(key.code);
+                    }
                 }
                 break;
             case keyboard::KeyboardKeyKind::Space:
                 if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Space), size)) {
-                    sendKey(key.code);
+                    if (useWindowsIme && state.composition.active) {
+                        resetHangulComposition();
+                        sendKey(key.code);
+                    } else {
+                        resetHangulComposition();
+                        queueVirtualText(" ");
+                    }
                 }
                 break;
             case keyboard::KeyboardKeyKind::HiraganaMode:
                 if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::Hiragana), size,
                                           false, language != keyboard::InputLanguageKind::Korean)) {
+                    resetHangulComposition();
                     sendKey(key.code);
                 }
                 break;

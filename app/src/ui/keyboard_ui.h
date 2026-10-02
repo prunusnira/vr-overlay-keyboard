@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/app_contracts.h"
+#include "../core/hangul_composer.h"
 #include "imgui_input_session.h"
 #include "settings_ui.h"
 
@@ -23,8 +24,23 @@ public:
     void setCompositionCancelCallback(std::function<void()> callback);
 
 private:
+    struct PendingHangulInput {
+        enum class Kind {
+            Jamo,
+            Backspace,
+        } kind = Kind::Jamo;
+        std::string text;
+    };
+
     void requestEditorFocus();
     void sendKey(keyboard::KeyCode key, bool withShift = false);
+    void queueVirtualText(const std::string &text);
+    void queueVirtualKey(ImGuiKey key);
+    void queueHangulJamo(const std::string &jamo);
+    void queueHangulBackspace();
+    void processHangulInput();
+    bool applyHangulEdit(const keyboard::HangulComposer::Edit &edit);
+    void resetHangulComposition();
     void appendLog(std::string message);
     void drawInputLanguages(const keyboard::AppUiState &state, keyboard::UiLanguage uiLanguage);
     void drawMissingInputLanguagePopup(keyboard::UiLanguage uiLanguage);
@@ -36,6 +52,7 @@ private:
 
     keyboard::KeyboardActions &m_actions;
     ImGuiInputSession m_inputSession;
+    keyboard::HangulComposer m_hangulComposer;
     SettingsUi m_settingsUi;
     FocusRequestCallback m_focusRequestCallback;
     std::function<void()> m_compositionCancelCallback;
@@ -43,10 +60,18 @@ private:
     std::string m_candidateSignature;
     std::string m_lastStatus;
     std::vector<std::string> m_log;
+    std::vector<PendingHangulInput> m_pendingHangulInput;
     bool m_applicationIsForeground = false;
     bool m_editorFocusArmed = false;
     bool m_focusEditorNextFrame = false;
+    ImGuiKey m_virtualKeyReleaseNextFrame = ImGuiKey_None;
     bool m_shiftForNextKey = false;
+    bool m_capsLockEnabled = false;
+    bool m_directHangulModeOverrideActive = false;
+    bool m_directHangulModeOverrideEnabled = false;
+    bool m_hangulRangeActive = false;
+    int m_hangulRangeStart = -1;
+    int m_hangulRangeEnd = -1;
     bool m_openMissingInputLanguagePopup = false;
     bool m_diagnosticsExpanded = false;
     bool m_pointerCursorVisible = false;

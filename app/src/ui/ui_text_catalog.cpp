@@ -13,9 +13,9 @@ struct TextTriple {
 
 constexpr std::array<TextTriple, static_cast<std::size_t>(TextId::Count)> kTexts = {{
     {"VR 오버레이 키보드", "VR オーバーレイキーボード", "VR Overlay Keyboard"},
-    {"Windows 입력기를 사용해 입력하세요. SteamVR에서 표시, 포인터 자세, 클릭 액션을 바인딩하세요.",
-     "Windows IMEで入力します。SteamVRで表示・ポインター姿勢・クリックを割り当ててください。",
-     "Type with the active Windows IME. Bind SteamVR toggle, pointer pose, and click actions."},
+    {"VR 키는 Windows 포커스를 바꾸지 않고 이 입력란에 바로 입력됩니다. 포커스가 없을 때 한글은 앱이 음절로 조합합니다. Windows IME 변환은 앱이 전경일 때 사용할 수 있습니다. SteamVR에서 표시, 포인터 자세, 클릭 액션을 바인딩하세요.",
+     "VR キーは Windows のフォーカスを変えずにこの入力欄へ直接入力します。フォーカスがない場合、韓国語はアプリ内で音節に組み立てます。Windows IME 変換にはアプリを前面にする必要があります。SteamVR で表示・ポインター姿勢・クリックを割り当ててください。",
+     "VR keys type directly into this editor without changing Windows focus. Korean keys compose into syllables in the app when it lacks focus. Windows IME conversion requires this app to be foreground. Bind SteamVR toggle, pointer pose, and click actions."},
     {"Chatbox 입력", "Chatbox 入力", "Chatbox text"},
     {"입력창 포커스", "入力欄にフォーカス", "Focus input"},
     {"오버레이 표시", "オーバーレイを表示", "Show keyboard overlay"},

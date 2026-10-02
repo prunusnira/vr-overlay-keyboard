@@ -25,9 +25,9 @@ VRChat Chatbox OSC 입력과 SteamVR 컨트롤러 입력은 프로토타입의 *
 | HMD 안에 후보 목록 그리기 | TSF UI-less 모드에서 `ITfUIElementSink`로 후보 UI 갱신을 받고 `ITfCandidateListUIElement`로 후보 문자열·선택·페이지를 읽을 수 있다. 앱이 이 데이터를 OpenVR 텍스처에 그려야 한다. | API 확인, 대상 IME별 동작 확인 필요 |
 | Dear ImGui 입력과 TSF 후보 sink | `keyboard_ui`가 편집 문자열을 보유하고 `windows_tsf_input`가 후보 snapshot을 제공한다. UI는 후보를 Dear ImGui 목록으로 그리며 선택 요청을 앱 계약에 전달한다. | 소스 연결, 실제 IME 후보 갱신·선택·문서 동기화 미검증 |
 | 후보 클릭으로 선택·확정 | 입력기가 `ITfCandidateListUIElementBehavior`를 제공하면 `SetSelection`, `Finalize`, `Abort`가 있다. 인터페이스 제공 여부는 입력기별로 다를 수 있다. 대체 경로인 숫자·방향키·Space 입력도 가상 키 전달에 성공해야 쓸 수 있다. | API 확인, 대상 IME별 동작 확인 필요 |
-| 오버레이 조작과 Windows 입력 포커스 | OpenVR은 오버레이 자체의 포커스·마우스 이벤트를 정의한다. 이것이 앱의 Win32 키보드 포커스를 자동으로 만든다는 문서는 찾지 못했다. Windows의 키보드 이벤트는 포커스가 있는 전경 스레드로 전달되며, 전경 창 변경도 제한된다. | **확실하지 않음**, Windows 실측 필수 |
+| 오버레이 조작과 Windows 입력 포커스 | OpenVR은 오버레이 자체의 포커스·마우스 이벤트를 정의한다. 이것이 앱의 Win32 키보드 포커스를 자동으로 만든다는 문서는 찾지 못했다. 현재 앱은 가상 키 문자를 ImGui 이벤트로 편집 문자열에 직접 넣어 전경 창 변경을 피한다. | 직접 입력 코드 경로 구현, VRChat 전경 상태에서의 실기기 입력은 미검증; Windows IME 조합은 여전히 앱 전경 필요 |
 | 컨트롤러 포인터 클릭을 UI로 전달 | 대시보드 경로의 프로토타입은 컨트롤러 포인터 이벤트를 UI로 전달한다. 현재 앱은 선택 손의 포인터 이동·누름·뗌·취소를 Dear ImGui 이벤트와 텍스처 커서로 변환한다. | 프로토타입 대시보드 경로는 사용자 확인, 새 앱 일반 오버레이 경로는 미검증 |
-| UI 가상 키를 IME 입력으로 전달 | 프로토타입은 앱이 Windows 전경 프로세스일 때 `SendInput`으로 키 이벤트를 넣는다. TSF의 `ITfKeystrokeMgr::KeyDown`은 텍스트 서비스에 키 이벤트를 전달하는 별도 API다. | 프로토타입 한국어 입력은 자모별 커밋으로 미통과; 대안 경로 미검증 |
+| UI 가상 키를 앱 편집기와 IME에 전달 | 문자는 앱 편집 상태에 직접 반영한다. Windows 포커스가 없을 때 한국어 두벌식은 앱 내부 조합기로 음절을 만들고 Backspace는 조합을 되돌린다. Windows IME 조합과 일본어 후보 입력은 앱이 전경일 때 기존 경로를 사용한다. | 포커스 독립 한국어 조합 코드 구현, VR 실기기 미검증; 포커스 독립 Windows IME와 후보 입력은 미구현·미검증 |
 | Dear ImGui 입력란과 TSF UI-less 후보 수신의 공존 | Dear ImGui 편집 문자열은 UI가 보유하고, 별도 TSF UI-less sink가 후보 데이터를 수집한다. IME 조합 문자열과 편집 버퍼가 동기화되는지, 후보 선택이 조합을 확정하는지는 확인되지 않았다. | **확실하지 않음**, Windows 실측 필수 |
 | 중국어 간체·번체 범위 | Windows는 둘 모두에 병음 경로가 있지만 입력기가 다르다. 두 종류를 제품 필수 범위에 넣을지는 기술 조사가 아니라 제품 범위 결정이다. | 범위 미정 |
 
@@ -35,9 +35,9 @@ VRChat Chatbox OSC 입력과 SteamVR 컨트롤러 입력은 프로토타입의 *
 
 ## 입력과 후보 UI의 경계
 
-OpenVR 헤더의 `SetFocusOverlay` 관련 이벤트는 오버레이의 **gamepad focus**로 설명된다. 이를 Windows `HWND`의 키보드 포커스로 취급할 근거는 없다. 현재 앱은 데스크톱 Win32 창에서 ImGui 입력란을 편집하고, 가상 키를 `SendInput`으로 보내기 전에 이 프로세스가 Windows 전경 창인지 확인한다. VRChat이 전경에 있는 동안 컨트롤러 입력을 앱의 편집기로 전달하는 포커스 경로는 아직 보장되지 않았다. [OpenVR 헤더](https://github.com/ValveSoftware/openvr/blob/master/headers/openvr.h), [Windows 키보드 입력 개요](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input), [Windows 전경 창 API](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow), [TSF 포커스 API](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfthreadmgr-setfocus)
+OpenVR 헤더의 `SetFocusOverlay` 관련 이벤트는 오버레이의 **gamepad focus**로 설명된다. 이를 Windows `HWND`의 키보드 포커스로 취급할 근거는 없다. 현재 앱은 VR 키 문자를 Dear ImGui 편집 상태에 직접 넣고, 포커스가 없는 한국어 두벌식 입력은 로컬 조합기로 음절을 만든다. 일본어 Windows IME 조합은 앱이 전경일 때 기존 `SendInput` 입력 포커스 경로에 의존한다. 포커스 독립 입력 및 HMD 동작은 실기기에서 아직 확인해야 한다. [OpenVR 헤더](https://github.com/ValveSoftware/openvr/blob/master/headers/openvr.h), [Windows 키보드 입력 개요](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input), [Windows 전경 창 API](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow), [TSF 포커스 API](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfthreadmgr-setfocus)
 
-컨트롤러의 자세·클릭 액션과 `ComputeOverlayIntersection`은 일반 오버레이 안의 UI 좌표·클릭을 만드는 경로다. 키보드 UI가 그 클릭을 가상 키로 바꾸고 Windows IME에 전달하는 일은 별도의 키 입력 경로다. 따라서 일반 오버레이 포인터 이벤트가 확인되어도 IME 키 전달이 확인된 것은 아니다.
+컨트롤러의 자세·클릭 액션과 `ComputeOverlayIntersection`은 일반 오버레이 안의 UI 좌표·클릭을 만드는 경로다. 키보드 UI는 클릭된 키를 앱 편집기에 직접 넣으며, 포커스가 있을 때의 Windows IME 전달은 별도 경로다. 따라서 일반 오버레이 포인터와 직접 입력 경로가 확인되어도 IME 조합·후보 처리가 확인된 것은 아니다.
 
 OpenVR이 표시하는 것은 앱이 제공한 텍스처다. Windows IME가 별도 데스크톱 창으로 띄운 후보 UI가 그 텍스처에 자동으로 포함된다는 근거는 없다. 따라서 후보 목록을 HMD에서 보여주려면 앱이 후보 **데이터**를 받아 텍스처 안에 다시 그려야 한다. 이는 OpenVR 텍스처 모델과 TSF UI-less 설계에서 도출한 구조적 판단이다. [OpenVR 오버레이 개요](https://github.com/ValveSoftware/openvr/wiki/IVROverlay_Overview), [TSF UI-less 모드](https://learn.microsoft.com/en-us/windows/win32/tsf/uiless-mode-overview)
 
@@ -66,8 +66,8 @@ TSF 후보 UI-less 모드에서는 `ITfUIElementSink`와 후보 목록 인터페
 | 2a. 소환 조합 및 옵션 | 옵션에서 UI 언어, 버튼 조합, 0~3초 유지 시간을 바꿔 저장한 뒤 앱을 다시 실행해 유지되는지 확인한다. 기본 오른쪽 Grip+B와 0초 조합이 숨겨진 오버레이를 한 번 표시하고, 버튼을 놓은 뒤 다시 표시하는지 확인한다. | SteamVR 소환 액션 바인딩, 동시에 눌림 판정, 설정 파일 읽기·쓰기를 구분해 점검 |
 | 3. 공간 고정·사용자 방향·Grip 이동 | 처음 표시한 위치는 방에 고정되고, 사용자가 움직이면 오버레이 정면이 HMD를 향하도록 회전하는지 확인한다. 선택한 컨트롤러로 가리킨 뒤 Grip을 잡아 이동하고 놓으면 새 위치에 멈춰야 한다. 숨긴 후 다시 표시해도 이동 위치가 남아야 한다. | standing 기준 위치와 HMD 방향 회전, 양손 포즈·Grip 액션을 HMD에서 확인 |
 | 4. 일반 오버레이 포인터 | 대시보드가 닫힌 상태에서 Quest 기본 프로필의 컨트롤러 자세·트리거 입력으로 포인터 표시와 UI 클릭이 되는지 확인한다. VRChat 장면 입력에 미치는 영향도 기록한다. | SteamVR 바인딩 적용, 커서 표시, 광선 좌표 변환 또는 게임 입력 상호작용 재검토 |
-| 5. 포커스와 가상 키 | VRChat이 실행 중일 때 오버레이 키를 눌러 입력란에 영문, Shift, Space, Backspace가 의도한 대로 적용된다. Windows 전경 창, 편집기 포커스, TSF 상태를 함께 기록한다. | 포인터 이벤트와 별개로 Windows 입력 전달 경로 변경 필요 |
-| 6. 한글 조합 | 키 세 번으로 입력란에 `ㄱ → 가 → 감` 상태가 순서대로 보이고, 조합 중 Backspace가 상태를 되돌린다. | 현재 입력란 또는 키 전달 경로로 한국어 요구 충족 불가 |
+| 5. 포커스 독립 가상 키 | VRChat을 Windows 전경으로 둔 채 오버레이 편집창을 한 번 누르고 키를 클릭한다. 영문, Shift, Space, Backspace, Enter가 앱 편집기에 반영되고 Windows 전경이 바뀌지 않으며 VRChat에는 문자가 입력되지 않아야 한다. 한국어 모드를 켜고 두벌식 키가 음절로 조합되는지 확인한 뒤 입력 문자열을 OSC로 Chatbox에 채운다. | ImGui 편집 상태와 로컬 조합기의 커서 범위, OSC 전송 경계를 확인 |
+| 6. Windows 한글 IME 조합 | 앱을 Windows 전경으로 두고 Windows IME를 사용해 키 세 번으로 입력란에 `ㄱ → 가 → 감` 상태가 순서대로 보이는지, 조합 중 Backspace가 상태를 되돌리는지 확인한다. 포커스 독립 직접 조합은 Windows 후보 변환을 제공하지 않는다. | Windows IME 조합·확정 경로 별도 재검토 |
 | 7. 일본어 후보 | 로마자 입력 후 가나 조합·한자 변환을 실행했을 때 후보 문자열, 선택, 페이지가 앱으로 들어오고 HMD에 표시되며 클릭으로 확정된다. | 현행 일본어 IME와 후보 API 또는 선택 경로 재검토 |
 | 8. 간체 중국어 후보 | Pinyin 입력 후 동일한 후보 표시·선택·확정이 된다. | 현행 Pinyin의 UI-less 또는 IMM 호환성 재검토 |
 | 9. 번체 중국어 후보 | 번체까지 필수 범위라면 Bopomofo의 HanYu Pinyin 설정에서 동일하게 확인한다. | 번체 지원 경로 재검토 |

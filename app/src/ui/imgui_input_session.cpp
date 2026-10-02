@@ -4,8 +4,37 @@
 #include <imgui_stdlib.h>
 
 #include <algorithm>
+#include <cstdint>
 
 namespace {
+constexpr int kTextEditBackspace = 0x200009;
+
+std::uint32_t nextUtf8CodePoint(const char *&cursor) {
+    const auto lead = static_cast<unsigned char>(*cursor++);
+    if (lead < 0x80) {
+        return lead;
+    }
+    if ((lead & 0xE0) == 0xC0 && cursor[0] != '\0') {
+        return ((lead & 0x1F) << 6) | (static_cast<unsigned char>(*cursor++) & 0x3F);
+    }
+    if ((lead & 0xF0) == 0xE0 && cursor[0] != '\0' && cursor[1] != '\0') {
+        const std::uint32_t codePoint = ((lead & 0x0F) << 12) |
+            ((static_cast<unsigned char>(cursor[0]) & 0x3F) << 6) |
+            (static_cast<unsigned char>(cursor[1]) & 0x3F);
+        cursor += 2;
+        return codePoint;
+    }
+    if ((lead & 0xF8) == 0xF0 && cursor[0] != '\0' && cursor[1] != '\0' && cursor[2] != '\0') {
+        const std::uint32_t codePoint = ((lead & 0x07) << 18) |
+            ((static_cast<unsigned char>(cursor[0]) & 0x3F) << 12) |
+            ((static_cast<unsigned char>(cursor[1]) & 0x3F) << 6) |
+            (static_cast<unsigned char>(cursor[2]) & 0x3F);
+        cursor += 3;
+        return codePoint;
+    }
+    return 0xFFFD;
+}
+
 // 프로토타입의 버튼 event filter처럼 편집기에 전달할 포인터 상태만 잠시 차단한다.
 // 범위를 벗어나면 원래 상태를 복구하므로 이후 버튼은 같은 누름·뗌 이벤트를 받는다.
 class EditorPointerScope final {
@@ -322,6 +351,87 @@ void ImGuiInputSession::clearEditor(std::string &text) {
         // 활성 편집창은 내부 버퍼를 보유하므로 외부 문자열 삭제도 다음 프레임에 반영시킨다.
         state->ReloadUserBufAndMoveToEnd();
     }
+}
+
+bool ImGuiInputSession::hasActiveEditorState() const {
+    return ImGui::GetInputTextState(m_editorId) != nullptr &&
+        ImGui::GetActiveID() == m_editorId;
+}
+
+bool ImGuiInputSession::editorCursorMatchesRange(int start, int end) const {
+    const ImGuiInputTextState *state = ImGui::GetInputTextState(m_editorId);
+    return state && ImGui::GetActiveID() == m_editorId &&
+        !state->HasSelection() && state->GetCursorPos() == end &&
+        start >= 0 && end >= start && end <= state->TextLen;
+}
+
+bool ImGuiInputSession::editEditorText(std::string &text,
+                                       int replaceStart,
+                                       int replaceEnd,
+                                       const std::string &replacement,
+                                       const std::string &activeSuffix,
+                                       int &activeStart,
+                                       int &activeEnd) {
+    ImGuiInputTextState *state = ImGui::GetInputTextState(m_editorId);
+    if (!state || ImGui::GetActiveID() != m_editorId) {
+        return false;
+    }
+    if (replaceStart >= 0 || replaceEnd >= 0) {
+        if (replaceStart < 0 || replaceEnd < replaceStart || replaceEnd > state->TextLen) {
+            return false;
+        }
+        state->SetSelection(replaceStart, replaceEnd);
+    }
+
+    if (!replacement.empty()) {
+        const std::size_t requiredCapacity = static_cast<std::size_t>(state->TextLen) +
+            replacement.size() + 1;
+        if (requiredCapacity > static_cast<std::size_t>(state->BufCapacity)) {
+            text.reserve(std::max(requiredCapacity, text.capacity() * 2 + 1));
+            state->BufCapacity = static_cast<int>(text.capacity() + 1);
+            state->TextA.resize(state->BufCapacity);
+            state->TextSrc = state->TextA.Data;
+        }
+    }
+
+    if (replacement.empty()) {
+        if (state->HasSelection()) {
+            state->OnKeyPressed(kTextEditBackspace);
+        }
+    } else {
+        const char *cursor = replacement.c_str();
+        const char *end = cursor + replacement.size();
+        while (cursor < end) {
+            const std::uint32_t codePoint = nextUtf8CodePoint(cursor);
+            state->OnCharPressed(codePoint);
+        }
+    }
+
+    state->EditedBefore = true;
+    state->EditedThisFrame = true;
+    state->CursorFollow = true;
+    text.assign(state->TextA.Data, static_cast<std::size_t>(state->TextLen));
+    activeEnd = state->GetCursorPos();
+    activeStart = activeSuffix.empty()
+        ? -1
+        : activeEnd - static_cast<int>(activeSuffix.size());
+    if (activeStart < 0 || activeSuffix.empty()) {
+        activeStart = -1;
+        activeEnd = -1;
+    }
+    return true;
+}
+
+bool ImGuiInputSession::backspaceEditor(std::string &text) {
+    ImGuiInputTextState *state = ImGui::GetInputTextState(m_editorId);
+    if (!state || ImGui::GetActiveID() != m_editorId) {
+        return false;
+    }
+    state->OnKeyPressed(kTextEditBackspace);
+    state->EditedBefore = true;
+    state->EditedThisFrame = true;
+    text.assign(state->TextA.Data, static_cast<std::size_t>(state->TextLen));
+    return true;
 }
 
 bool ImGuiInputSession::isVirtualControlAt(int x, int y) const {
