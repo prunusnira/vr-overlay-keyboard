@@ -18,7 +18,7 @@
 
 namespace {
 constexpr ULONGLONG kTargetFrameIntervalMs = 16;
-constexpr ULONGLONG kOverlayTextureIntervalMs = 33;
+constexpr ULONGLONG kOverlayTextureIntervalMs = 16;
 
 std::wstring executablePath() {
     std::wstring buffer(32768, L'\0');
@@ -206,7 +206,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         // 후보 선택/조합 취소 콜백이 그리는 도중 상태를 갱신해도 현재 화면의 문자열·후보 반복은 안정적으로 유지한다.
         const keyboard::AppUiState uiState = keyboardApplication.state();
         keyboardUi.draw(uiState, applicationIsForeground);
-        // OpenGL 픽셀 readback은 오버레이가 실제 표시될 때만 초당 약 30회 수행한다.
+        // OpenGL 픽셀 readback은 오버레이가 표시될 때 초당 최대 약 60회 수행한다.
         const bool updateOverlayTexture =
             overlayReady && overlay.isVisible() && now - lastTextureUpdate >= kOverlayTextureIntervalMs;
         keyboard::ImageFrame frame = host.renderFrame(updateOverlayTexture);

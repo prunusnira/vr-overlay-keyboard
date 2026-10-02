@@ -12,7 +12,7 @@ VRChat Chatbox OSC 입력과 SteamVR 컨트롤러 입력은 프로토타입의 *
 
 | 항목 | 문서 조사 결과 | 상태 |
 | --- | --- | --- |
-| 데스크톱 UI와 OpenVR 프레임 | Dear ImGui Win32 platform backend와 OpenGL3 renderer를 사용한다. host는 데스크톱을 매 프레임 그리고 오버레이가 보일 때 약 30Hz로 OpenGL 프레임버퍼를 RGBA readback해 OpenVR에 전달한다. | 소스 구현과 Windows x64 Release 빌드 확인, HMD readback 성능은 미측정 |
+| 데스크톱 UI와 OpenVR 프레임 | Dear ImGui Win32 platform backend와 OpenGL3 renderer를 사용한다. host는 데스크톱을 매 프레임 그리고 오버레이가 보일 때 약 60Hz로 OpenGL 프레임버퍼를 RGBA readback해 OpenVR에 전달한다. | 소스 구현과 Windows x64 Release 빌드 확인, HMD readback 성능은 미측정 |
 | VRChat 기본 Chatbox 입력란 채우기 | `/chatbox/input`에 문자열과 `false`를 보내면 VRChat 키보드를 열고 문자열을 채운다. `true`는 즉시 전송한다. 기본 수신 포트는 9000이며 사용자가 OSC를 켜야 한다. | API 확인, 사용자가 프로토타입의 기본 OSC 입력 성공을 확인함; 다국어 왕복은 미기록 |
 | Chatbox 글자·줄 제한 | 공식 문서는 최대 144자, 표시 최대 9줄을 명시한다. 줄 수에는 자동 줄바꿈도 포함한다. | 문서 확인 |
 | 한글·일본어·중국어 OSC 문자열 | VRChat 문서는 Chatbox 인수를 문자열로 정의하지만, 네 언어별 인코딩과 144자 계산 단위는 명시하지 않는다. OSC 1.0 원문은 기본 문자열을 ASCII로 정의한다. 다국어 문자열의 실제 왕복은 별도 확인이 필요하다. | **확실하지 않음**, VRChat 실측 필수 |

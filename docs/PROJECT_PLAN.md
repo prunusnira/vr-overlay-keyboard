@@ -43,7 +43,7 @@ VRChat 문서는 `/chatbox/input`의 `send=false`가 키보드를 열어 문장�
 
 | 구성 요소 | 역할 | 현재 선택 |
 | --- | --- | --- |
-| C++와 Dear ImGui, Win32, OpenGL3 | 데스크톱 UI, 입력란, 가상 키, 상태 표시와 OpenVR용 프레임 생성 | 후보 영역은 고정 높이·가로 스크롤로 배치하고 오버레이 표시 중 약 30Hz로 프레임을 전달한다. IME 조합과 readback 성능은 검증 필요 |
+| C++와 Dear ImGui, Win32, OpenGL3 | 데스크톱 UI, 입력란, 가상 키, 상태 표시와 OpenVR용 프레임 생성 | 후보 영역은 고정 높이·가로 스크롤로 배치하고 오버레이 표시 중 약 60Hz로 프레임을 전달한다. IME 조합과 readback 성능은 검증 필요 |
 | Windows IME와 TSF | 한글 조합, 일본어와 중국어 변환 및 후보 데이터 제공 | Windows 입력기를 사용하려는 후보 경로. 현행 입력기별 UI-less 후보 지원은 미확인 |
 | SteamVR Input | 기존 토글, 컨트롤러 포인터 자세·클릭, Grip 조작용 스틱 축, 소환 조합 버튼 입력을 전달 | Meta Quest Touch 기본 프로필을 추가했다. 실제 HMD 수신은 미검증 |
 | OpenVR `IVROverlay` | 대시보드와 독립적인 표시·숨김, standing 공간 고정, 사용자 방향 회전, Grip 이동·크기·거리 조정, 컨트롤러 포인터 이벤트 | 절대 위치·사용자 방향 회전·드래그·크기 및 거리 조절·아래쪽 포인터 보정을 추가했다. HMD 동작은 미검증 |

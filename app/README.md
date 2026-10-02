@@ -70,7 +70,7 @@ It reproduces the original outside-click focus loss and checks startup focus, fo
 ## Known limits
 
 - The Windows x64 Release build succeeds. The user confirmed Japanese desktop input and conversion after the IMM composition/focus changes. Exact IME/version and HMD behavior remain unrecorded.
-- OpenGL readback performance at the current 30 Hz overlay update rate has not been measured on the target setup.
+- OpenGL readback performance at the current 60 Hz overlay update rate has not been measured on the target setup.
 - The prototype confirmed controller pointer interaction in a dashboard overlay and the basic Chatbox OSC flow. The ordinary overlay pointer path through `ControllerPose`, `PointerClick`, and `ComputeOverlayIntersection`, plus `ToggleKeyboard` delivery with the dashboard closed, need HMD validation in this app.
 - Windows may deny foreground focus. Native IME keystrokes remain guarded against reaching another foreground process; the focus-independent Korean path locally composes Hangul, while Japanese direct input does not provide IME conversion.
 - The user still observed per-jamo Korean commits with the mouse before the thread-scoped mouse router was added. The new native mouse route needs validation with the installed Korean IME. Controller input is also unverified in this app.
