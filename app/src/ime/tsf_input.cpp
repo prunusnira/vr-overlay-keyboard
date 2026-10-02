@@ -79,6 +79,15 @@ bool switchJapaneseImeToKana(std::string *error) {
     return false;
 }
 
+bool currentProcessOwnsForegroundWindow() {
+    const HWND foregroundWindow = GetForegroundWindow();
+    DWORD foregroundProcessId = 0;
+    if (foregroundWindow) {
+        GetWindowThreadProcessId(foregroundWindow, &foregroundProcessId);
+    }
+    return foregroundProcessId == GetCurrentProcessId();
+}
+
 class CandidateSink final : public ITfUIElementSink {
 public:
     CandidateSink(ITfUIElementMgr *manager, TsfInput::CandidateCallback callback)
@@ -365,10 +374,12 @@ bool TsfInput::setMode(keyboard::KeyboardLanguage language, std::string *error) 
     }
 
     // Windows can activate the Japanese layout in its default half-width A mode.
-    // Use the IME shortcut for that state; the queued key event is the reliable mode
-    // switch, while writing the compartment afterward could toggle it back to A.
+    // When this app owns foreground focus, the IME shortcut switches that context
+    // reliably. In the background, update only this app's TSF compartment instead
+    // of sending Alt+` to whichever unrelated window currently owns focus.
     if (language == keyboard::KeyboardLanguage::Japanese &&
-        (!previousMode.available || !previousMode.native)) {
+        (!previousMode.available || !previousMode.native) &&
+        currentProcessOwnsForegroundWindow()) {
         return switchJapaneseImeToKana(error);
     }
 

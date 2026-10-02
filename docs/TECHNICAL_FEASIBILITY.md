@@ -27,7 +27,7 @@ VRChat Chatbox OSC 입력과 SteamVR 컨트롤러 입력은 프로토타입의 *
 | 후보 클릭으로 선택·확정 | 입력기가 `ITfCandidateListUIElementBehavior`를 제공하면 `SetSelection`, `Finalize`, `Abort`가 있다. 인터페이스 제공 여부는 입력기별로 다를 수 있다. 대체 경로인 숫자·방향키·Space 입력도 가상 키 전달에 성공해야 쓸 수 있다. | API 확인, 대상 IME별 동작 확인 필요 |
 | 오버레이 조작과 Windows 입력 포커스 | OpenVR은 오버레이 자체의 포커스·마우스 이벤트를 정의한다. 이것이 앱의 Win32 키보드 포커스를 자동으로 만든다는 문서는 찾지 못했다. 현재 앱은 가상 키 문자를 ImGui 이벤트로 편집 문자열에 직접 넣어 전경 창 변경을 피한다. | 직접 입력 코드 경로 구현, VRChat 전경 상태에서의 실기기 입력은 미검증; Windows IME 조합은 여전히 앱 전경 필요 |
 | 컨트롤러 포인터 클릭을 UI로 전달 | 대시보드 경로의 프로토타입은 컨트롤러 포인터 이벤트를 UI로 전달한다. 현재 앱은 선택 손의 포인터 이동·누름·뗌·취소를 Dear ImGui 이벤트와 텍스처 커서로 변환한다. | 프로토타입 대시보드 경로는 사용자 확인, 새 앱 일반 오버레이 경로는 미검증 |
-| UI 가상 키를 앱 편집기와 IME에 전달 | 문자는 앱 편집 상태에 직접 반영한다. Windows 포커스가 없을 때 한국어 두벌식은 앱 내부 조합기로 음절을 만들고 Backspace는 조합을 되돌린다. Windows IME 조합과 일본어 후보 입력은 앱이 전경일 때 기존 경로를 사용한다. | 포커스 독립 한국어 조합 코드 구현, VR 실기기 미검증; 포커스 독립 Windows IME와 후보 입력은 미구현·미검증 |
+| UI 가상 키를 앱 편집기와 IME에 전달 | 문자는 앱 편집 상태에 직접 반영한다. Windows 포커스가 없을 때 한국어 두벌식은 음절로, 일본어 히라가나 모드는 로마자에서 가나로 앱 내부 조합한다. 일본어 한자 변환과 IME 후보 입력은 앱이 전경일 때 Windows IME 경로를 사용한다. | 포커스 독립 한국어·일본어 조합 코드 구현, VR 실기기 미검증; 포커스 독립 Windows IME 후보 입력은 미구현·미검증 |
 | Dear ImGui 입력란과 TSF UI-less 후보 수신의 공존 | Dear ImGui 편집 문자열은 UI가 보유하고, 별도 TSF UI-less sink가 후보 데이터를 수집한다. IME 조합 문자열과 편집 버퍼가 동기화되는지, 후보 선택이 조합을 확정하는지는 확인되지 않았다. | **확실하지 않음**, Windows 실측 필수 |
 | 중국어 간체·번체 범위 | Windows는 둘 모두에 병음 경로가 있지만 입력기가 다르다. 두 종류를 제품 필수 범위에 넣을지는 기술 조사가 아니라 제품 범위 결정이다. | 범위 미정 |
 
@@ -35,7 +35,7 @@ VRChat Chatbox OSC 입력과 SteamVR 컨트롤러 입력은 프로토타입의 *
 
 ## 입력과 후보 UI의 경계
 
-OpenVR 헤더의 `SetFocusOverlay` 관련 이벤트는 오버레이의 **gamepad focus**로 설명된다. 이를 Windows `HWND`의 키보드 포커스로 취급할 근거는 없다. 현재 앱은 VR 키 문자를 Dear ImGui 편집 상태에 직접 넣고, 포커스가 없는 한국어 두벌식 입력은 로컬 조합기로 음절을 만든다. 일본어 Windows IME 조합은 앱이 전경일 때 기존 `SendInput` 입력 포커스 경로에 의존한다. 포커스 독립 입력 및 HMD 동작은 실기기에서 아직 확인해야 한다. [OpenVR 헤더](https://github.com/ValveSoftware/openvr/blob/master/headers/openvr.h), [Windows 키보드 입력 개요](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input), [Windows 전경 창 API](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow), [TSF 포커스 API](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfthreadmgr-setfocus)
+OpenVR 헤더의 `SetFocusOverlay` 관련 이벤트는 오버레이의 **gamepad focus**로 설명된다. 이를 Windows `HWND`의 키보드 포커스로 취급할 근거는 없다. 현재 앱은 VR 키 문자를 Dear ImGui 편집 상태에 직접 넣고, 포커스가 없는 한국어 두벌식과 일본어 히라가나 입력은 로컬 조합기로 처리한다. 한자 변환은 앱이 전경일 때 Windows IME에 의존한다. 포커스 독립 입력 및 HMD 동작은 실기기에서 아직 확인해야 한다. [OpenVR 헤더](https://github.com/ValveSoftware/openvr/blob/master/headers/openvr.h), [Windows 키보드 입력 개요](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input), [Windows 전경 창 API](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow), [TSF 포커스 API](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfthreadmgr-setfocus)
 
 컨트롤러의 자세·클릭 액션과 `ComputeOverlayIntersection`은 일반 오버레이 안의 UI 좌표·클릭을 만드는 경로다. 키보드 UI는 클릭된 키를 앱 편집기에 직접 넣으며, 포커스가 있을 때의 Windows IME 전달은 별도 경로다. 따라서 일반 오버레이 포인터와 직접 입력 경로가 확인되어도 IME 조합·후보 처리가 확인된 것은 아니다.
 

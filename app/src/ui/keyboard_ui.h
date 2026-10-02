@@ -2,6 +2,7 @@
 
 #include "../core/app_contracts.h"
 #include "../core/hangul_composer.h"
+#include "../core/kana_composer.h"
 #include "imgui_input_session.h"
 #include "settings_ui.h"
 
@@ -32,6 +33,14 @@ private:
         std::string text;
     };
 
+    struct PendingKanaInput {
+        enum class Kind {
+            Roman,
+            Backspace,
+        } kind = Kind::Roman;
+        char roman = '\0';
+    };
+
     void requestEditorFocus();
     void sendKey(keyboard::KeyCode key, bool withShift = false);
     void queueVirtualText(const std::string &text);
@@ -41,6 +50,11 @@ private:
     void processHangulInput();
     bool applyHangulEdit(const keyboard::HangulComposer::Edit &edit);
     void resetHangulComposition();
+    void queueKanaRoman(char roman);
+    void queueKanaBackspace();
+    void processKanaInput();
+    bool applyKanaEdit(const keyboard::KanaComposer::Edit &edit);
+    void resetKanaComposition();
     void appendLog(std::string message);
     void drawInputLanguages(const keyboard::AppUiState &state, keyboard::UiLanguage uiLanguage);
     void drawMissingInputLanguagePopup(keyboard::UiLanguage uiLanguage);
@@ -53,6 +67,7 @@ private:
     keyboard::KeyboardActions &m_actions;
     ImGuiInputSession m_inputSession;
     keyboard::HangulComposer m_hangulComposer;
+    keyboard::KanaComposer m_kanaComposer;
     SettingsUi m_settingsUi;
     FocusRequestCallback m_focusRequestCallback;
     std::function<void()> m_compositionCancelCallback;
@@ -61,6 +76,7 @@ private:
     std::string m_lastStatus;
     std::vector<std::string> m_log;
     std::vector<PendingHangulInput> m_pendingHangulInput;
+    std::vector<PendingKanaInput> m_pendingKanaInput;
     bool m_applicationIsForeground = false;
     bool m_editorFocusArmed = false;
     bool m_focusEditorNextFrame = false;
@@ -69,9 +85,13 @@ private:
     bool m_capsLockEnabled = false;
     bool m_directHangulModeOverrideActive = false;
     bool m_directHangulModeOverrideEnabled = false;
+    bool m_directJapaneseHiraganaModeOverrideActive = false;
     bool m_hangulRangeActive = false;
     int m_hangulRangeStart = -1;
     int m_hangulRangeEnd = -1;
+    bool m_kanaRangeActive = false;
+    int m_kanaRangeStart = -1;
+    int m_kanaRangeEnd = -1;
     bool m_openMissingInputLanguagePopup = false;
     bool m_diagnosticsExpanded = false;
     bool m_pointerCursorVisible = false;

@@ -56,6 +56,8 @@ target_link_libraries(dear_imgui PUBLIC OpenGL::GL dwmapi)
 add_library(app_core STATIC
     src/core/hangul_composer.cpp
     src/core/hangul_composer.h
+    src/core/kana_composer.cpp
+    src/core/kana_composer.h
     src/core/keyboard_application.cpp
     src/core/keyboard_application.h
     src/core/keyboard_layout.cpp
