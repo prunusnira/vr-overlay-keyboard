@@ -24,42 +24,56 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
         return;
     }
 
-    const ImGuiIO &io = ImGui::GetIO();
-    const float width = std::min(430.0f, std::max(1.0f, io.DisplaySize.x - 24.0f));
-    const float height = std::min(820.0f, std::max(1.0f, io.DisplaySize.y - 24.0f));
-    ImGui::SetNextWindowPos(ImVec2(std::max(0.0f, io.DisplaySize.x - width - 12.0f),
-                                   std::max(0.0f, (io.DisplaySize.y - height) * 0.5f)),
-                            ImGuiCond_Appearing);
-    ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Appearing);
-    constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
-        ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoSavedSettings |
-        ImGuiWindowFlags_NoFocusOnAppearing |
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoResize;
-    // 옵션을 표시할 때 편집기의 ActiveId를 빼앗지 않는다. 메인 창도 포커스로 앞으로 올라오지 않는다.
-    ImGui::Begin("Options##settings-window", nullptr, flags);
+    const ImVec2 parentPosition = ImGui::GetWindowPos();
+    const ImVec2 panelSize = ImGui::GetWindowSize();
+    ImGui::SetCursorScreenPos(parentPosition);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::BeginChild("Options##settings-window", panelSize, ImGuiChildFlags_None,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleVar();
+    // 옵션은 메인 창의 포커스를 빼앗지 않는 child overlay로 표시해 IME 세션을 보존한다.
 
     keyboard::AppSettings edited = state.settings;
     bool settingsChanged = false;
     bool rejectedEmptySelection = false;
     const keyboard::UiLanguage language = state.settings.uiLanguage;
 
-    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::OptionsTitle));
-    ImGui::SameLine();
-    const float closeWidth = 88.0f;
-    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - closeWidth - 22.0f));
+    const ImVec2 headerPosition = ImGui::GetCursorScreenPos();
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    const ImVec2 windowMinimum = ImGui::GetWindowPos();
+    const ImVec2 windowMaximum(windowMinimum.x + ImGui::GetWindowWidth(),
+                               windowMinimum.y + ImGui::GetWindowHeight());
+    drawList->AddRectFilledMultiColor(windowMinimum, windowMaximum,
+        IM_COL32(20, 29, 39, 255), IM_COL32(13, 20, 28, 255),
+        IM_COL32(13, 20, 28, 255), IM_COL32(17, 25, 34, 255));
+    drawList->AddRectFilled(headerPosition,
+        ImVec2(headerPosition.x + 34.0f, headerPosition.y + 34.0f), IM_COL32(107, 218, 192, 255), 9.0f);
+    drawList->AddText(ImGui::GetFont(), 14.0f,
+        ImVec2(headerPosition.x + 10.0f, headerPosition.y + 8.0f), IM_COL32(8, 30, 25, 255), "N");
+    drawList->AddText(ImGui::GetFont(), 17.0f,
+        ImVec2(headerPosition.x + 46.0f, headerPosition.y), IM_COL32(237, 244, 247, 255),
+        localized(language, keyboard::ui_text::TextId::OptionsTitle));
+    drawList->AddText(ImGui::GetFont(), 10.0f,
+        ImVec2(headerPosition.x + 46.0f, headerPosition.y + 23.0f),
+        IM_COL32(101, 119, 132, 255), "CONTROLLER  /  INPUT SETTINGS");
+    const float closeWidth = 96.0f;
+    ImGui::SetCursorScreenPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() -
+        ImGui::GetStyle().WindowPadding.x - closeWidth, headerPosition.y + 3.0f));
     if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::Close), ImVec2(closeWidth, 30.0f))) {
         m_actions.setOptionsOpen(false);
     }
+    ImGui::SetCursorScreenPos(ImVec2(headerPosition.x, headerPosition.y + 39.0f));
     ImGui::Separator();
 
     const float scrollRegionHeight = ImGui::GetContentRegionAvail().y;
+    const float bodyWidth = std::min(860.0f, ImGui::GetContentRegionAvail().x);
+    ImGui::SetCursorPosX(ImGui::GetStyle().WindowPadding.x +
+        std::max(0.0f, (ImGui::GetContentRegionAvail().x - bodyWidth) * 0.5f));
     float maxScrollY = 0.0f;
     float visibleHeight = 1.0f;
     if (ImGui::BeginTable("options-scroll-layout", 2,
                           ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoPadOuterX,
-                          ImVec2(-FLT_MIN, scrollRegionHeight))) {
+                          ImVec2(bodyWidth, scrollRegionHeight))) {
         ImGui::TableSetupColumn("options-content", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("options-scrollbar", ImGuiTableColumnFlags_WidthFixed, 28.0f);
         ImGui::TableNextColumn();
@@ -181,7 +195,7 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
         ImGui::EndTable();
     }
 
-    ImGui::End();
+    ImGui::EndChild();
     if (settingsChanged) {
         // 설정은 사용자 단위 파일에 즉시 저장하므로 앱을 다시 켜도 선택값을 유지한다.
         m_actions.applySettings(edited);

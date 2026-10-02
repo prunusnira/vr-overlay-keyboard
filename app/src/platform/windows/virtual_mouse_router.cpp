@@ -4,11 +4,6 @@
 
 namespace {
 thread_local WindowsVirtualMouseRouter *g_threadRouter = nullptr;
-
-bool koreanLayout() {
-    const LANGID language = LOWORD(reinterpret_cast<ULONG_PTR>(GetKeyboardLayout(0)));
-    return PRIMARYLANGID(language) == LANG_KOREAN;
-}
 }
 
 WindowsVirtualMouseRouter::~WindowsVirtualMouseRouter() {
@@ -106,8 +101,9 @@ bool WindowsVirtualMouseRouter::route(int code, UINT message, const MOUSEHOOKSTR
         return false;
     }
     const bool leftPress = message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK;
+    // Virtual UI controls must remain clickable after switching to Japanese or English layouts.
     const bool startsVirtualGesture = leftPress && mouse.hwnd == m_window && mouse.wHitTestCode == HTCLIENT &&
-        GetForegroundWindow() == m_window && koreanLayout() && m_hitTest(point.x, point.y);
+        GetForegroundWindow() == m_window && m_hitTest(point.x, point.y);
     const bool continuesVirtualGesture = m_ownsGesture &&
         (message == WM_MOUSEMOVE || message == WM_LBUTTONUP);
     if (!startsVirtualGesture && !continuesVirtualGesture) {
