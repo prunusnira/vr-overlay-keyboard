@@ -46,7 +46,7 @@ VRChat 문서는 `/chatbox/input`의 `send=false`가 키보드를 열어 문장�
 | C++와 Dear ImGui, Win32, OpenGL3 | 데스크톱 UI, 입력란, 가상 키, 상태 표시와 OpenVR용 프레임 생성 | 후보 영역은 고정 높이·가로 스크롤로 배치하고 오버레이 표시 중 약 60Hz로 프레임을 전달한다. IME 조합과 readback 성능은 검증 필요 |
 | Windows IME와 TSF | 한글 조합, 일본어와 중국어 변환 및 후보 데이터 제공 | Windows 입력기를 사용하려는 후보 경로. 현행 입력기별 UI-less 후보 지원은 미확인 |
 | SteamVR Input | 기존 토글, 컨트롤러 포인터 자세·클릭, Grip 조작용 스틱 축, 소환 조합 버튼 입력을 전달 | Meta Quest Touch 기본 프로필을 추가했다. 실제 HMD 수신은 미검증 |
-| OpenVR `IVROverlay` | 대시보드와 독립적인 표시·숨김, standing 공간 고정, 사용자 방향 회전, Grip 이동·크기·거리 조정, 컨트롤러 포인터 이벤트 | 절대 위치·사용자 방향 회전·드래그·크기 및 거리 조절·아래쪽 포인터 보정을 추가했다. HMD 동작은 미검증 |
+| OpenVR `IVROverlay` | 대시보드와 독립적인 표시·숨김, standing 공간 고정, 사용자 방향 회전, Grip 이동·크기·거리 조정, 컨트롤러 포인터 이벤트 | 절대 위치·사용자 방향 회전·드래그·크기 및 거리 조절을 추가했다. 포인터 오프셋은 -50%~+50%에서 일정한 속도로 적용하고 패널 밖에 입력 영역을 확장한다. 새 좌표 보정의 HMD 동작은 미검증 |
 | OSC 클라이언트 | 완성된 문장을 VRChat에 전달 | `/chatbox/input`으로 전송 |
 
 Valve의 `IVROverlay`는 2D 이미지를 VR 화면 위에 표시하고 오버레이 입력 이벤트를 받는다. 현재 앱은 Dear ImGui의 Win32 입력 backend와 OpenGL3 renderer로 데스크톱 프레임을 만들고, 프레임버퍼를 RGBA 이미지로 읽어 OpenGL 텍스처로 갱신해 OpenVR에 전달한다. `SetOverlayRaw`는 갱신 사이 오버레이가 사라질 수 있어 지속 OpenGL 텍스처를 사용한다. 이 구조는 Qt 런타임에 의존하지 않지만 OpenGL readback 비용과 IME 조합 동작은 별도 확인이 필요하다. [OpenVR 오버레이 개요](https://github.com/ValveSoftware/openvr/wiki/IVROverlay_Overview), [SetOverlayRaw](https://github.com/ValveSoftware/openvr/wiki/IVROverlay%3A%3ASetOverlayRaw), [Dear ImGui backends](https://github.com/ocornut/imgui/blob/master/docs/BACKENDS.md), [Dear ImGui examples](https://github.com/ocornut/imgui/blob/master/docs/EXAMPLES.md)

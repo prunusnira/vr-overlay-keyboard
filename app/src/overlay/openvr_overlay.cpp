@@ -36,19 +36,13 @@ float applyStickDeadzone(float value) {
     return std::copysign(scaledMagnitude, value);
 }
 
-float applyEdgePreservingPointerOffset(float coordinate, float offsetPercent) {
-    const float normalized = std::clamp(coordinate, 0.0f, 1.0f);
-    const float offset = std::clamp(offsetPercent / 100.0f,
-                                    -keyboard::kMaximumPointerOffsetPercent / 100.0f,
-                                    keyboard::kMaximumPointerOffsetPercent / 100.0f);
-    const float peak = 0.5f - offset * 0.5f;
-    const float fadeCoordinate = normalized <= peak
-        ? normalized / peak
-        : (1.0f - normalized) / (1.0f - peak);
-    const float t = std::clamp(fadeCoordinate, 0.0f, 1.0f);
-    const float edgeFade = t * t * (3.0f - 2.0f * t);
-    // 보정할 가장자리 반대쪽으로 최대 보정점을 옮겨 ±50%에서도 좌표가 뒤집히지 않게 한다.
-    return std::clamp(normalized + offset * edgeFade, 0.0f, 1.0f);
+float normalizedPointerOffset(float offsetPercent) {
+    if (!std::isfinite(offsetPercent)) {
+        return 0.0f;
+    }
+    return std::clamp(offsetPercent / 100.0f,
+                       -keyboard::kMaximumPointerOffsetPercent / 100.0f,
+                       keyboard::kMaximumPointerOffsetPercent / 100.0f);
 }
 
 void setRuntimeError(std::string *error, vr::EVRInitError code) {
@@ -538,13 +532,17 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
         int leftY = -1;
         int rightX = -1;
         int rightY = -1;
+        bool leftHitsVisiblePanel = false;
+        bool rightHitsVisiblePanel = false;
         const bool leftIntersects = leftSample && computePointerPosition(
-            *leftSample, settings.pointerOffsetXPercent, settings.pointerOffsetYPercent, &leftX, &leftY);
+            *leftSample, settings.pointerOffsetXPercent, settings.pointerOffsetYPercent,
+            &leftX, &leftY, &leftHitsVisiblePanel);
         const bool rightIntersects = rightSample && computePointerPosition(
-            *rightSample, settings.pointerOffsetXPercent, settings.pointerOffsetYPercent, &rightX, &rightY);
-        const bool leftGripReady = leftIntersects && leftSample->gripPressed &&
+            *rightSample, settings.pointerOffsetXPercent, settings.pointerOffsetYPercent,
+            &rightX, &rightY, &rightHitsVisiblePanel);
+        const bool leftGripReady = leftHitsVisiblePanel && leftSample->gripPressed &&
             !m_gripAwaitingRelease[handIndex(keyboard::ControllerHand::Left)];
-        const bool rightGripReady = rightIntersects && rightSample->gripPressed &&
+        const bool rightGripReady = rightHitsVisiblePanel && rightSample->gripPressed &&
             !m_gripAwaitingRelease[handIndex(keyboard::ControllerHand::Right)];
         const bool leftSelectReady = leftIntersects && leftSample->selectPressed;
         const bool rightSelectReady = rightIntersects && rightSample->selectPressed;
@@ -737,8 +735,14 @@ bool OpenVrOverlay::computePointerPosition(const keyboard::ControllerPointerSamp
                                           float offsetXPercent,
                                           float offsetYPercent,
                                           int *x,
-                                          int *y) const {
-    if (!m_overlay || !sample.poseActive || !x || !y || m_textureWidth == 0 || m_textureHeight == 0) {
+                                          int *y,
+                                          bool *rayHitsVisiblePanel) const {
+    if (rayHitsVisiblePanel) {
+        *rayHitsVisiblePanel = false;
+    }
+    if (!m_overlay || !m_hasAbsoluteWorldTransform || !sample.poseActive || !x || !y ||
+        m_textureWidth == 0 || m_textureHeight == 0 || !std::isfinite(m_overlayWidthMeters) ||
+        m_overlayWidthMeters <= 0.0f) {
         return false;
     }
     for (float coordinate : sample.origin) {
@@ -758,6 +762,64 @@ bool OpenVrOverlay::computePointerPosition(const keyboard::ControllerPointerSamp
         return false;
     }
 
+    const std::array<float, 3> planeOrigin = {
+        m_absoluteWorldTransform.m[0][3],
+        m_absoluteWorldTransform.m[1][3],
+        m_absoluteWorldTransform.m[2][3],
+    };
+    const std::array<float, 3> planeRight = {
+        m_absoluteWorldTransform.m[0][0],
+        m_absoluteWorldTransform.m[1][0],
+        m_absoluteWorldTransform.m[2][0],
+    };
+    const std::array<float, 3> planeUp = {
+        m_absoluteWorldTransform.m[0][1],
+        m_absoluteWorldTransform.m[1][1],
+        m_absoluteWorldTransform.m[2][1],
+    };
+    const std::array<float, 3> planeNormal = {
+        m_absoluteWorldTransform.m[0][2],
+        m_absoluteWorldTransform.m[1][2],
+        m_absoluteWorldTransform.m[2][2],
+    };
+    const auto dot = [](const std::array<float, 3> &left, const std::array<float, 3> &right) {
+        return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+    };
+
+    // 평면 자체를 투영해 보이지 않는 연장 입력 영역에서도 오프셋을 1:1로 적용한다.
+    const float directionAlongNormal = dot(sample.direction, planeNormal);
+    if (!std::isfinite(directionAlongNormal) || directionAlongNormal >= -0.0001f) {
+        return false;
+    }
+    const std::array<float, 3> originToPlane = {
+        planeOrigin[0] - sample.origin[0],
+        planeOrigin[1] - sample.origin[1],
+        planeOrigin[2] - sample.origin[2],
+    };
+    const float rayDistance = dot(originToPlane, planeNormal) / directionAlongNormal;
+    if (!std::isfinite(rayDistance) || rayDistance < 0.0f) {
+        return false;
+    }
+    const std::array<float, 3> hitOffset = {
+        sample.origin[0] + sample.direction[0] * rayDistance - planeOrigin[0],
+        sample.origin[1] + sample.direction[1] * rayDistance - planeOrigin[1],
+        sample.origin[2] + sample.direction[2] * rayDistance - planeOrigin[2],
+    };
+    const float overlayHeightMeters = m_overlayWidthMeters * static_cast<float>(m_textureHeight) /
+                                      static_cast<float>(m_textureWidth);
+    if (!std::isfinite(overlayHeightMeters) || overlayHeightMeters <= 0.0f) {
+        return false;
+    }
+    float rawU = dot(hitOffset, planeRight) / m_overlayWidthMeters + 0.5f;
+    float rawV = 0.5f - dot(hitOffset, planeUp) / overlayHeightMeters;
+    if (!std::isfinite(rawU) || !std::isfinite(rawV)) {
+        return false;
+    }
+    const bool geometricallyInsidePanel = rawU >= 0.0f && rawU <= 1.0f && rawV >= 0.0f && rawV <= 1.0f;
+    if (rayHitsVisiblePanel) {
+        *rayHitsVisiblePanel = geometricallyInsidePanel;
+    }
+
     vr::VROverlayIntersectionParams_t ray{};
     ray.vSource.v[0] = sample.origin[0];
     ray.vSource.v[1] = sample.origin[1];
@@ -768,13 +830,22 @@ bool OpenVrOverlay::computePointerPosition(const keyboard::ControllerPointerSamp
     ray.eOrigin = vr::TrackingUniverseStanding;
 
     vr::VROverlayIntersectionResults_t intersection{};
-    if (!m_overlay->ComputeOverlayIntersection(m_handle, &ray, &intersection)) {
-        return false;
+    // 화면 안쪽은 OpenVR UV를 그대로 사용하고, 화면 바깥에서는 위의 평면 투영값을 쓴다.
+    if (geometricallyInsidePanel &&
+        m_overlay->ComputeOverlayIntersection(m_handle, &ray, &intersection) &&
+        std::isfinite(intersection.vUVs.v[0]) && std::isfinite(intersection.vUVs.v[1]) &&
+        intersection.vUVs.v[0] >= 0.0f && intersection.vUVs.v[0] <= 1.0f &&
+        intersection.vUVs.v[1] >= 0.0f && intersection.vUVs.v[1] <= 1.0f) {
+        rawU = intersection.vUVs.v[0];
+        rawV = intersection.vUVs.v[1];
     }
 
-    // 가장자리 보존 매핑으로 보정하면서 오버레이 안의 모든 UI 좌표를 계속 맞힐 수 있게 한다.
-    const float normalizedX = applyEdgePreservingPointerOffset(intersection.vUVs.v[0], offsetXPercent);
-    const float normalizedY = applyEdgePreservingPointerOffset(intersection.vUVs.v[1], offsetYPercent);
+    // 일정한 오프셋을 더하고, UI 범위 밖으로 나간 쪽은 평면의 연장 영역으로 입력받는다.
+    const float normalizedX = rawU + normalizedPointerOffset(offsetXPercent);
+    const float normalizedY = rawV + normalizedPointerOffset(offsetYPercent);
+    if (normalizedX < 0.0f || normalizedX > 1.0f || normalizedY < 0.0f || normalizedY > 1.0f) {
+        return false;
+    }
     const float pixelX = normalizedX * static_cast<float>(m_textureWidth);
     const float pixelY = normalizedY * static_cast<float>(m_textureHeight);
     *x = static_cast<int>(std::clamp(pixelX, 0.0f, static_cast<float>(m_textureWidth - 1)));

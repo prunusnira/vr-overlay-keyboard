@@ -46,7 +46,8 @@ private:
                                 float offsetXPercent,
                                 float offsetYPercent,
                                 int *x,
-                                int *y) const;
+                                int *y,
+                                bool *rayHitsVisiblePanel = nullptr) const;
     void dispatchPointerEvent(keyboard::PointerEventType type,
                               int x,
                               int y,
