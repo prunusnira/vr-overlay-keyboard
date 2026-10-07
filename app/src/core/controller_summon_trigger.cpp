@@ -24,9 +24,11 @@ bool validateAppSettings(const AppSettings &settings, std::string *error) {
 
     if (!std::isfinite(settings.pointerOffsetXPercent) ||
         !std::isfinite(settings.pointerOffsetYPercent) ||
-        settings.pointerOffsetXPercent < -10.0f || settings.pointerOffsetXPercent > 10.0f ||
-        settings.pointerOffsetYPercent < -10.0f || settings.pointerOffsetYPercent > 10.0f) {
-        return fail("Pointer offsets must be between -10 and 10 percent.");
+        settings.pointerOffsetXPercent < -kMaximumPointerOffsetPercent ||
+        settings.pointerOffsetXPercent > kMaximumPointerOffsetPercent ||
+        settings.pointerOffsetYPercent < -kMaximumPointerOffsetPercent ||
+        settings.pointerOffsetYPercent > kMaximumPointerOffsetPercent) {
+        return fail("Pointer offsets must be between -50 and 50 percent.");
     }
 
     if (settings.summonHoldMilliseconds > 3000) {

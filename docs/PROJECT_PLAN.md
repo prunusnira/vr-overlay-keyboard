@@ -20,7 +20,7 @@ Windows PC에서 SteamVR 오버레이 키보드를 띄우고, 사용자가 오�
 
 SteamVR Input 바인딩은 최초 설정에 필요하지만, 일반 사용 중 오버레이를 표시할 때 SteamVR 대시보드를 열 필요는 없다. 전역 단축키나 외부 프로세스 명령은 추후 같은 앱 커맨드에 연결할 수 있는 확장 경로다. 모듈 경계와 상세 실행 흐름은 [모듈 아키텍처](ARCHITECTURE.md)를 참고한다.
 
-옵션 버튼은 별도 Dear ImGui 창을 열고 같은 프레임을 사용해 데스크톱과 HMD 오버레이에 내용을 표시한다. 여기서 한국어·일본어·영어 앱 UI, 포인터를 조작할 왼손/오른손, 포인터 가로·세로 보정(-10%~+10%), 좌우 Grip·Trigger·A·B·Menu·Joystick·Trackpad 논리 버튼 중 소환 조합과 0~3초 홀드 시간을 지정한다. Windows 입력 언어 선택은 이 앱 UI 언어 설정과 분리되어 유지된다. 설정은 `%LOCALAPPDATA%\VROverlayKeyboard\settings.ini`에 저장한다. SteamVR 기본 프로필에 없는 컨트롤러는 선택한 액션을 직접 물리 버튼에 바인딩해야 한다.
+옵션 버튼은 별도 Dear ImGui 창을 열고 같은 프레임을 사용해 데스크톱과 HMD 오버레이에 내용을 표시한다. 여기서 한국어·일본어·영어 앱 UI, 포인터를 조작할 왼손/오른손, 포인터 가로·세로 보정(-50%~+50%), 좌우 Grip·Trigger·A·B·Menu·Joystick·Trackpad 논리 버튼 중 소환 조합과 0~3초 홀드 시간을 지정한다. Windows 입력 언어 선택은 이 앱 UI 언어 설정과 분리되어 유지된다. 설정은 `%LOCALAPPDATA%\VROverlayKeyboard\settings.ini`에 저장한다. SteamVR 기본 프로필에 없는 컨트롤러는 선택한 액션을 직접 물리 버튼에 바인딩해야 한다.
 
 VRChat 문서는 `/chatbox/input`의 `send=false`가 키보드를 열어 문장을 채우고, `send=true`가 키보드를 거치지 않고 바로 전송한다고 설명한다. 따라서 현재 흐름의 버튼은 즉시 게시가 아닌 **입력란 채우기**로 정의한다. [VRChat Chatbox OSC 입력](https://docs.vrchat.com/docs/osc-as-input-controller)
 

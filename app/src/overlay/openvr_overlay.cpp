@@ -36,6 +36,21 @@ float applyStickDeadzone(float value) {
     return std::copysign(scaledMagnitude, value);
 }
 
+float applyEdgePreservingPointerOffset(float coordinate, float offsetPercent) {
+    const float normalized = std::clamp(coordinate, 0.0f, 1.0f);
+    const float offset = std::clamp(offsetPercent / 100.0f,
+                                    -keyboard::kMaximumPointerOffsetPercent / 100.0f,
+                                    keyboard::kMaximumPointerOffsetPercent / 100.0f);
+    const float peak = 0.5f - offset * 0.5f;
+    const float fadeCoordinate = normalized <= peak
+        ? normalized / peak
+        : (1.0f - normalized) / (1.0f - peak);
+    const float t = std::clamp(fadeCoordinate, 0.0f, 1.0f);
+    const float edgeFade = t * t * (3.0f - 2.0f * t);
+    // 보정할 가장자리 반대쪽으로 최대 보정점을 옮겨 ±50%에서도 좌표가 뒤집히지 않게 한다.
+    return std::clamp(normalized + offset * edgeFade, 0.0f, 1.0f);
+}
+
 void setRuntimeError(std::string *error, vr::EVRInitError code) {
     if (error) {
         *error = vr::VR_GetVRInitErrorAsEnglishDescription(code);
@@ -757,11 +772,11 @@ bool OpenVrOverlay::computePointerPosition(const keyboard::ControllerPointerSamp
         return false;
     }
 
-    // 퍼센트 보정을 커서와 클릭 좌표에 함께 적용해 조준점과 UI 입력을 일치시킨다.
-    const float pixelX = intersection.vUVs.v[0] * static_cast<float>(m_textureWidth) +
-                         static_cast<float>(m_textureWidth) * offsetXPercent / 100.0f;
-    const float pixelY = intersection.vUVs.v[1] * static_cast<float>(m_textureHeight) +
-                         static_cast<float>(m_textureHeight) * offsetYPercent / 100.0f;
+    // 가장자리 보존 매핑으로 보정하면서 오버레이 안의 모든 UI 좌표를 계속 맞힐 수 있게 한다.
+    const float normalizedX = applyEdgePreservingPointerOffset(intersection.vUVs.v[0], offsetXPercent);
+    const float normalizedY = applyEdgePreservingPointerOffset(intersection.vUVs.v[1], offsetYPercent);
+    const float pixelX = normalizedX * static_cast<float>(m_textureWidth);
+    const float pixelY = normalizedY * static_cast<float>(m_textureHeight);
     *x = static_cast<int>(std::clamp(pixelX, 0.0f, static_cast<float>(m_textureWidth - 1)));
     *y = static_cast<int>(std::clamp(pixelY, 0.0f, static_cast<float>(m_textureHeight - 1)));
     return true;

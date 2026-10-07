@@ -106,12 +106,16 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
     ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerPositionAdjustment));
     ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerHorizontalOffset));
     if (m_inputSession.sliderFloat("##pointer-offset-x", ImVec2(-FLT_MIN, 30.0f),
-                                   edited.pointerOffsetXPercent, -10.0f, 10.0f, "%.1f%%")) {
+                                   edited.pointerOffsetXPercent,
+                                   -keyboard::kMaximumPointerOffsetPercent,
+                                   keyboard::kMaximumPointerOffsetPercent, "%.1f%%")) {
         settingsChanged = true;
     }
     ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerVerticalOffset));
     if (m_inputSession.sliderFloat("##pointer-offset-y", ImVec2(-FLT_MIN, 30.0f),
-                                   edited.pointerOffsetYPercent, -10.0f, 10.0f, "%.1f%%")) {
+                                   edited.pointerOffsetYPercent,
+                                   -keyboard::kMaximumPointerOffsetPercent,
+                                   keyboard::kMaximumPointerOffsetPercent, "%.1f%%")) {
         settingsChanged = true;
     }
     ImGui::TextWrapped("%s", localized(language, keyboard::ui_text::TextId::PointerOffsetHint));

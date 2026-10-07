@@ -119,6 +119,8 @@ struct AppSettings {
     std::uint32_t summonHoldMilliseconds = 0;
 };
 
+constexpr float kMaximumPointerOffsetPercent = 50.0f;
+
 // 저장소와 앱 코어가 같은 규칙으로 사용자 설정을 검증한다.
 bool validateAppSettings(const AppSettings &settings, std::string *error = nullptr);
 
