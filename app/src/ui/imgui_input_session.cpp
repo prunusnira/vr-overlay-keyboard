@@ -35,6 +35,16 @@ std::uint32_t nextUtf8CodePoint(const char *&cursor) {
     return 0xFFFD;
 }
 
+int utf8CodePointCount(const std::string &text) {
+    int count = 0;
+    for (unsigned char byte : text) {
+        if ((byte & 0xC0) != 0x80) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 // 프로토타입의 버튼 event filter처럼 편집기에 전달할 포인터 상태만 잠시 차단한다.
 // 범위를 벗어나면 원래 상태를 복구하므로 이후 버튼은 같은 누름·뗌 이벤트를 받는다.
 class EditorPointerScope final {
@@ -414,7 +424,7 @@ bool ImGuiInputSession::editEditorText(std::string &text,
     activeEnd = state->GetCursorPos();
     activeStart = activeSuffix.empty()
         ? -1
-        : activeEnd - static_cast<int>(activeSuffix.size());
+        : activeEnd - utf8CodePointCount(activeSuffix);
     if (activeStart < 0 || activeSuffix.empty()) {
         activeStart = -1;
         activeEnd = -1;
