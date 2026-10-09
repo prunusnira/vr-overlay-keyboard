@@ -48,10 +48,12 @@ private:
                                 int *x,
                                 int *y,
                                 bool *rayHitsVisiblePanel = nullptr) const;
-    void dispatchPointerEvent(keyboard::PointerEventType type,
+    void dispatchPointerEvent(keyboard::ControllerHand hand,
+                              keyboard::PointerEventType type,
                               int x,
                               int y,
                               keyboard::PointerButton button = keyboard::PointerButton::None);
+    void resetPointerState(keyboard::ControllerHand hand);
     void resetPointerState();
     bool failWithOverlayError(const char *operation, vr::VROverlayError error, std::string *message) const;
 
@@ -79,11 +81,6 @@ private:
     PointerCallback m_pointerCallback;
     InteractionStatusCallback m_interactionStatusCallback;
     std::string m_lastInteractionStatus;
-    keyboard::ControllerHand m_lastPointerHand = keyboard::ControllerHand::Right;
-    keyboard::ControllerHand m_captureHand = keyboard::ControllerHand::Right;
-    bool m_hasCaptureHand = false;
-    bool m_selectWasPressed = false;
-    bool m_pointerInsideOverlay = false;
-    int m_lastPointerX = -1;
-    int m_lastPointerY = -1;
+    std::array<bool, 2> m_selectWasPressed{};
+    std::array<bool, 2> m_pointerInsideOverlay{};
 };

@@ -469,29 +469,20 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
         return;
     }
 
-    const keyboard::ControllerPointerSample *leftSample = nullptr;
-    const keyboard::ControllerPointerSample *rightSample = nullptr;
+    std::array<const keyboard::ControllerPointerSample *, 2> handSamples{};
     for (const keyboard::ControllerPointerSample &candidate : samples.hands) {
-        if (candidate.hand == keyboard::ControllerHand::Left) {
-            leftSample = &candidate;
-        } else if (candidate.hand == keyboard::ControllerHand::Right) {
-            rightSample = &candidate;
-        }
+        handSamples[handIndex(candidate.hand)] = &candidate;
     }
 
     // 소환에 사용한 Grip만 해제 입력을 기다린다. 일반 이동은 패널을 가리키며 누른 동안 시작할 수 있다.
-    for (const keyboard::ControllerPointerSample *hand : {leftSample, rightSample}) {
+    for (const keyboard::ControllerPointerSample *hand : handSamples) {
         if (hand && !hand->gripPressed) {
             m_gripAwaitingRelease[handIndex(hand->hand)] = false;
         }
     }
 
-    const keyboard::ControllerPointerSample *sample = nullptr;
-    int x = -1;
-    int y = -1;
-    bool intersects = false;
     if (m_isGripDragging) {
-        sample = m_dragHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
+        const keyboard::ControllerPointerSample *sample = handSamples[handIndex(m_dragHand)];
         if (!sample || !sample->poseActive || !sample->gripPressed) {
             // Grip을 놓거나 손 추적이 끊기면 현재 절대 좌표에서 이동을 끝낸다.
             m_isGripDragging = false;
@@ -515,121 +506,85 @@ void OpenVrOverlay::handleControllerPointers(const keyboard::ControllerPointerSa
         return;
     }
 
-    if (m_hasCaptureHand) {
-        sample = m_captureHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
-        if (!sample || !sample->poseActive) {
-            // 누르는 동안 손 추적이 사라지면 ImGui에 취소 이벤트를 보내 버튼 눌림 상태를 해제한다.
-            resetPointerState();
-            return;
-        }
-        intersects = computePointerPosition(*sample,
-                                            settings.pointerOffsetXPercent,
-                                            settings.pointerOffsetYPercent,
-                                            &x,
-                                            &y);
-    } else {
-        int leftX = -1;
-        int leftY = -1;
-        int rightX = -1;
-        int rightY = -1;
-        bool leftHitsVisiblePanel = false;
-        bool rightHitsVisiblePanel = false;
-        const bool leftIntersects = leftSample && computePointerPosition(
-            *leftSample, settings.pointerOffsetXPercent, settings.pointerOffsetYPercent,
-            &leftX, &leftY, &leftHitsVisiblePanel);
-        const bool rightIntersects = rightSample && computePointerPosition(
-            *rightSample, settings.pointerOffsetXPercent, settings.pointerOffsetYPercent,
-            &rightX, &rightY, &rightHitsVisiblePanel);
-        const bool leftGripReady = leftHitsVisiblePanel && leftSample->gripPressed &&
-            !m_gripAwaitingRelease[handIndex(keyboard::ControllerHand::Left)];
-        const bool rightGripReady = rightHitsVisiblePanel && rightSample->gripPressed &&
-            !m_gripAwaitingRelease[handIndex(keyboard::ControllerHand::Right)];
-        const bool leftSelectReady = leftIntersects && leftSample->selectPressed;
-        const bool rightSelectReady = rightIntersects && rightSample->selectPressed;
-
-        // 어느 손이든 오버레이를 가리키면 쓸 수 있게 하고, 겹치는 경우에는 누른 손 또는 마지막 손을 유지한다.
-        if (leftGripReady != rightGripReady) {
-            sample = leftGripReady ? leftSample : rightSample;
-        } else if (leftSelectReady != rightSelectReady) {
-            sample = leftSelectReady ? leftSample : rightSample;
-        } else if (leftIntersects != rightIntersects) {
-            sample = leftIntersects ? leftSample : rightSample;
-        } else if (leftIntersects && rightIntersects) {
-            sample = m_lastPointerHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
-        } else {
-            sample = m_lastPointerHand == keyboard::ControllerHand::Left ? leftSample : rightSample;
-            if (!sample) {
-                sample = m_lastPointerHand == keyboard::ControllerHand::Left ? rightSample : leftSample;
-            }
-        }
-        if (!sample) {
-            if (m_pointerInsideOverlay) {
-                dispatchPointerEvent(keyboard::PointerEventType::Leave, -1, -1);
-            }
-            m_pointerInsideOverlay = false;
-            m_lastPointerX = -1;
-            m_lastPointerY = -1;
-            return;
-        }
-        intersects = sample->hand == keyboard::ControllerHand::Left ? leftIntersects : rightIntersects;
-        if (intersects) {
-            x = sample->hand == keyboard::ControllerHand::Left ? leftX : rightX;
-            y = sample->hand == keyboard::ControllerHand::Left ? leftY : rightY;
-            m_lastPointerHand = sample->hand;
+    std::array<int, 2> pointerX{{-1, -1}};
+    std::array<int, 2> pointerY{{-1, -1}};
+    std::array<bool, 2> intersects{};
+    std::array<bool, 2> rayHitsVisiblePanel{};
+    for (std::size_t index = 0; index < handSamples.size(); ++index) {
+        const keyboard::ControllerPointerSample *sample = handSamples[index];
+        if (sample && sample->poseActive) {
+            intersects[index] = computePointerPosition(*sample,
+                                                       settings.pointerOffsetXPercent,
+                                                       settings.pointerOffsetYPercent,
+                                                       &pointerX[index],
+                                                       &pointerY[index],
+                                                       &rayHitsVisiblePanel[index]);
         }
     }
 
-    const std::size_t selectedIndex = handIndex(sample->hand);
-    if (intersects && sample->gripPressed && !m_gripAwaitingRelease[selectedIndex]) {
+    const bool leftGripReady = handSamples[0] && rayHitsVisiblePanel[0] &&
+        handSamples[0]->gripPressed && !m_gripAwaitingRelease[0];
+    const bool rightGripReady = handSamples[1] && rayHitsVisiblePanel[1] &&
+        handSamples[1]->gripPressed && !m_gripAwaitingRelease[1];
+    const keyboard::ControllerPointerSample *gripSample = leftGripReady
+        ? handSamples[0]
+        : rightGripReady ? handSamples[1] : nullptr;
+    if (gripSample) {
         // 트리거로 UI를 누른 상태여도 Grip 이동을 먼저 처리하고 기존 클릭은 취소한다.
         std::string dragError;
-        if (beginGripDrag(*sample, &dragError)) {
+        if (beginGripDrag(*gripSample, &dragError)) {
             m_isGripDragging = true;
             resetPointerState();
-            dispatchPointerEvent(keyboard::PointerEventType::Leave, -1, -1);
             reportInteractionStatus("Grip drag started.");
         } else {
-            m_gripAwaitingRelease[selectedIndex] = true;
+            m_gripAwaitingRelease[handIndex(gripSample->hand)] = true;
             reportInteractionStatus("Grip drag could not start: " + dragError);
         }
         return;
     }
 
-    if (intersects) {
-        dispatchPointerEvent(keyboard::PointerEventType::Move, x, y);
-        m_pointerInsideOverlay = true;
-        m_lastPointerX = x;
-        m_lastPointerY = y;
-        if (!m_hasCaptureHand && sample->selectPressed) {
-            m_captureHand = sample->hand;
-            m_hasCaptureHand = true;
-            m_selectWasPressed = true;
-            dispatchPointerEvent(keyboard::PointerEventType::Press, x, y, keyboard::PointerButton::Left);
+    for (std::size_t index = 0; index < handSamples.size(); ++index) {
+        const keyboard::ControllerHand hand = index == 0
+            ? keyboard::ControllerHand::Left
+            : keyboard::ControllerHand::Right;
+        const keyboard::ControllerPointerSample *sample = handSamples[index];
+        if (!sample || !sample->poseActive) {
+            // 한 손의 추적이 끊겨도 다른 손의 포인터와 클릭은 유지한다.
+            resetPointerState(hand);
+            continue;
         }
-    } else {
-        if (m_pointerInsideOverlay) {
-            dispatchPointerEvent(keyboard::PointerEventType::Leave, -1, -1);
-            m_pointerInsideOverlay = false;
-        }
-        m_lastPointerX = -1;
-        m_lastPointerY = -1;
-    }
 
-    if (m_hasCaptureHand && m_selectWasPressed && !sample->selectPressed) {
-        if (m_pointerInsideOverlay) {
-            dispatchPointerEvent(keyboard::PointerEventType::Release,
-                                 m_lastPointerX,
-                                 m_lastPointerY,
-                                 keyboard::PointerButton::Left);
+        if (intersects[index]) {
+            dispatchPointerEvent(hand, keyboard::PointerEventType::Move, pointerX[index], pointerY[index]);
+            m_pointerInsideOverlay[index] = true;
+            if (!m_selectWasPressed[index] && sample->selectPressed) {
+                m_selectWasPressed[index] = true;
+                dispatchPointerEvent(hand, keyboard::PointerEventType::Press,
+                                     pointerX[index], pointerY[index], keyboard::PointerButton::Left);
+            }
         } else {
-            dispatchPointerEvent(keyboard::PointerEventType::Cancel, -1, -1);
+            if (m_pointerInsideOverlay[index]) {
+                dispatchPointerEvent(hand, keyboard::PointerEventType::Leave, -1, -1);
+                m_pointerInsideOverlay[index] = false;
+            }
         }
-        m_selectWasPressed = false;
-        resetPointerState();
+
+        if (m_selectWasPressed[index] && !sample->selectPressed) {
+            if (intersects[index]) {
+                dispatchPointerEvent(hand, keyboard::PointerEventType::Release,
+                                     pointerX[index], pointerY[index], keyboard::PointerButton::Left);
+            } else {
+                dispatchPointerEvent(hand, keyboard::PointerEventType::Cancel, -1, -1);
+                m_pointerInsideOverlay[index] = false;
+            }
+            m_selectWasPressed[index] = false;
+        }
     }
 
     // 먼저 현재 화면 기준으로 포인터·Grip 판정을 마친 뒤 다음 갱신에 쓸 방향을 맞춘다.
-    if (!m_isGripDragging && !m_hasCaptureHand) {
+    const bool anyControllerSelectPressed =
+        m_selectWasPressed[0] || m_selectWasPressed[1];
+    if (!m_isGripDragging && !anyControllerSelectPressed) {
         vr::HmdMatrix34_t facingTransform = m_absoluteWorldTransform;
         orientTowardsUser(&facingTransform);
         std::string transformError;
@@ -853,7 +808,8 @@ bool OpenVrOverlay::computePointerPosition(const keyboard::ControllerPointerSamp
     return true;
 }
 
-void OpenVrOverlay::dispatchPointerEvent(keyboard::PointerEventType type,
+void OpenVrOverlay::dispatchPointerEvent(keyboard::ControllerHand hand,
+                                        keyboard::PointerEventType type,
                                         int x,
                                         int y,
                                         keyboard::PointerButton button) {
@@ -863,20 +819,28 @@ void OpenVrOverlay::dispatchPointerEvent(keyboard::PointerEventType type,
     keyboard::PointerEvent pointer;
     pointer.type = type;
     pointer.button = button;
+    pointer.source = hand == keyboard::ControllerHand::Left
+        ? keyboard::PointerSource::LeftController
+        : keyboard::PointerSource::RightController;
     pointer.x = x;
     pointer.y = y;
     m_pointerCallback(pointer);
 }
 
-void OpenVrOverlay::resetPointerState() {
-    if (m_selectWasPressed) {
-        dispatchPointerEvent(keyboard::PointerEventType::Cancel, -1, -1);
+void OpenVrOverlay::resetPointerState(keyboard::ControllerHand hand) {
+    const std::size_t index = handIndex(hand);
+    if (m_selectWasPressed[index]) {
+        dispatchPointerEvent(hand, keyboard::PointerEventType::Cancel, -1, -1);
+    } else if (m_pointerInsideOverlay[index]) {
+        dispatchPointerEvent(hand, keyboard::PointerEventType::Leave, -1, -1);
     }
-    m_hasCaptureHand = false;
-    m_selectWasPressed = false;
-    m_pointerInsideOverlay = false;
-    m_lastPointerX = -1;
-    m_lastPointerY = -1;
+    m_selectWasPressed[index] = false;
+    m_pointerInsideOverlay[index] = false;
+}
+
+void OpenVrOverlay::resetPointerState() {
+    resetPointerState(keyboard::ControllerHand::Left);
+    resetPointerState(keyboard::ControllerHand::Right);
 }
 
 bool OpenVrOverlay::failWithOverlayError(const char *operation,

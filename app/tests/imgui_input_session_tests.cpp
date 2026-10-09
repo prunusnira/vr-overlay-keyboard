@@ -104,6 +104,14 @@ public:
         frame();
     }
 
+    void controllerEvent(keyboard::PointerEventType type,
+                         keyboard::PointerSource source,
+                         const ImVec2 &position) {
+        m_session.dispatchControllerPointerEvent({type, keyboard::PointerButton::Left, source,
+                                                   static_cast<int>(position.x),
+                                                   static_cast<int>(position.y)});
+    }
+
     void clear() {
         m_session.clearEditor(text);
         frame();
@@ -171,6 +179,53 @@ void retainFocusAndTypeOnRelease() {
         require(harness.text == value, "Backspace did not remove exactly one Unicode character");
     }
     require(harness.backspaceCount == 4, "Backspace produced duplicate or missing key requests");
+}
+
+void processIndependentControllerClicksInOneFrame() {
+    InputHarness harness;
+    harness.focus();
+
+    const ImVec2 leftKey = harness.letterBounds.GetCenter();
+    const ImVec2 rightKey = harness.backspaceBounds.GetCenter();
+    harness.controllerEvent(keyboard::PointerEventType::Move,
+                            keyboard::PointerSource::LeftController, leftKey);
+    harness.controllerEvent(keyboard::PointerEventType::Press,
+                            keyboard::PointerSource::LeftController, leftKey);
+    harness.controllerEvent(keyboard::PointerEventType::Move,
+                            keyboard::PointerSource::RightController, rightKey);
+    harness.controllerEvent(keyboard::PointerEventType::Press,
+                            keyboard::PointerSource::RightController, rightKey);
+    harness.frame();
+    require(!harness.letterPressed && !harness.backspacePressed,
+            "Controller keys fired before their release events");
+
+    harness.controllerEvent(keyboard::PointerEventType::Move,
+                            keyboard::PointerSource::LeftController, leftKey);
+    harness.controllerEvent(keyboard::PointerEventType::Release,
+                            keyboard::PointerSource::LeftController, leftKey);
+    harness.controllerEvent(keyboard::PointerEventType::Move,
+                            keyboard::PointerSource::RightController, rightKey);
+    harness.controllerEvent(keyboard::PointerEventType::Release,
+                            keyboard::PointerSource::RightController, rightKey);
+    harness.frame();
+    require(harness.letterPressed && harness.backspacePressed &&
+            harness.letterCount == 1 && harness.backspaceCount == 1,
+            "Independent controller clicks were not both processed in the same frame");
+
+    for (keyboard::PointerSource source : {keyboard::PointerSource::LeftController,
+                                           keyboard::PointerSource::RightController}) {
+        harness.controllerEvent(keyboard::PointerEventType::Move, source, leftKey);
+        harness.controllerEvent(keyboard::PointerEventType::Press, source, leftKey);
+    }
+    harness.frame();
+    for (keyboard::PointerSource source : {keyboard::PointerSource::LeftController,
+                                           keyboard::PointerSource::RightController}) {
+        harness.controllerEvent(keyboard::PointerEventType::Move, source, leftKey);
+        harness.controllerEvent(keyboard::PointerEventType::Release, source, leftKey);
+    }
+    harness.frame();
+    require(harness.letterCount == 2,
+            "Two controllers activating the same key produced more than one activation");
 }
 
 void cancelDraggedButtonsAndKeepEditorGestures() {
@@ -265,6 +320,7 @@ int main() {
     try {
         reproduceOriginalFocusLoss();
         retainFocusAndTypeOnRelease();
+        processIndependentControllerClicksInOneFrame();
         cancelDraggedButtonsAndKeepEditorGestures();
         scrollWithoutChangingEditorFocus();
         focusByMouseAndRespectApplicationFocusLoss();

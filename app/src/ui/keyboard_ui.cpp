@@ -36,6 +36,10 @@ int mouseButtonIndex(keyboard::PointerButton button) {
     }
 }
 
+std::size_t controllerCursorIndex(keyboard::PointerSource source) {
+    return source == keyboard::PointerSource::LeftController ? 0 : 1;
+}
+
 const char *localized(keyboard::UiLanguage language, keyboard::ui_text::TextId id) {
     return keyboard::ui_text::text(language, id);
 }
@@ -366,12 +370,29 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
     ImGui::EndChild();
     ImGui::End();
     if (m_pointerCursorVisible) {
-        // ImGui 기본 마우스 커서는 VR 텍스처에 표시되지 않을 수 있어 포인터 위치를 직접 그린다.
+        // 데스크톱 마우스는 ImGui 기본 커서가 VR 텍스처에 표시되지 않을 수 있어 직접 그린다.
         ImDrawList *foreground = ImGui::GetForegroundDrawList();
         const ImVec2 cursor(static_cast<float>(m_pointerCursorX), static_cast<float>(m_pointerCursorY));
         foreground->AddCircleFilled(cursor, 10.0f, IM_COL32(12, 20, 30, 220), 20);
         foreground->AddCircle(cursor, 10.0f, IM_COL32(245, 250, 255, 245), 20, 2.0f);
         foreground->AddCircleFilled(cursor, 3.0f, IM_COL32(70, 190, 255, 255), 12);
+    }
+    ImDrawList *foreground = ImGui::GetForegroundDrawList();
+    constexpr ImU32 cursorColors[] = {IM_COL32(70, 190, 255, 255), IM_COL32(255, 174, 78, 255)};
+    constexpr const char *cursorLabels[] = {"L", "R"};
+    for (std::size_t index = 0; index < m_controllerCursors.size(); ++index) {
+        const ControllerCursor &controllerCursor = m_controllerCursors[index];
+        if (!controllerCursor.visible) {
+            continue;
+        }
+        const ImVec2 cursor(static_cast<float>(controllerCursor.x), static_cast<float>(controllerCursor.y));
+        foreground->AddCircleFilled(cursor, 10.0f, IM_COL32(12, 20, 30, 220), 20);
+        foreground->AddCircle(cursor, 10.0f, cursorColors[index], 20, 2.5f);
+        foreground->AddCircleFilled(cursor, 3.0f, cursorColors[index], 12);
+        const ImVec2 labelPosition = index == 0
+            ? ImVec2(cursor.x - 9.0f, cursor.y - 23.0f)
+            : ImVec2(cursor.x + 5.0f, cursor.y + 7.0f);
+        foreground->AddText(labelPosition, cursorColors[index], cursorLabels[index]);
     }
     m_inputSession.endFrame();
 }
@@ -380,6 +401,27 @@ void KeyboardUi::dispatchPointerEvent(const keyboard::PointerEvent &event) {
     if (!ImGui::GetCurrentContext()) {
         return;
     }
+    if (event.source != keyboard::PointerSource::Desktop) {
+        m_inputSession.dispatchControllerPointerEvent(event);
+        ControllerCursor &cursor = m_controllerCursors[controllerCursorIndex(event.source)];
+        switch (event.type) {
+        case keyboard::PointerEventType::Move:
+        case keyboard::PointerEventType::Press:
+        case keyboard::PointerEventType::Release:
+            cursor.visible = true;
+            cursor.x = event.x;
+            cursor.y = event.y;
+            break;
+        case keyboard::PointerEventType::Leave:
+        case keyboard::PointerEventType::Cancel:
+            cursor.visible = false;
+            cursor.x = -1;
+            cursor.y = -1;
+            break;
+        }
+        return;
+    }
+
     ImGuiIO &io = ImGui::GetIO();
     // OpenVR 및 Windows 마우스 어댑터가 같은 client pixel 이벤트를 사용해 동일 버튼 흐름으로 처리한다.
     switch (event.type) {

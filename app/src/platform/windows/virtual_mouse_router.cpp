@@ -81,7 +81,8 @@ void WindowsVirtualMouseRouter::cancel() {
 
 void WindowsVirtualMouseRouter::emit(keyboard::PointerEventType type, const POINT &point) {
     if (m_pointer) {
-        m_pointer({type, keyboard::PointerButton::Left, point.x, point.y});
+        m_pointer({type, keyboard::PointerButton::Left, keyboard::PointerSource::Desktop,
+                   point.x, point.y});
     }
 }
 

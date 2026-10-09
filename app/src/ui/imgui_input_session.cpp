@@ -9,6 +9,10 @@
 namespace {
 constexpr int kTextEditBackspace = 0x200009;
 
+std::size_t controllerIndex(keyboard::PointerSource source) {
+    return source == keyboard::PointerSource::LeftController ? 0 : 1;
+}
+
 std::uint32_t nextUtf8CodePoint(const char *&cursor) {
     const auto lead = static_cast<unsigned char>(*cursor++);
     if (lead < 0x80) {
@@ -94,6 +98,130 @@ void ImGuiInputSession::endFrame() {
         m_draggedScrollbarId = 0;
         m_draggedSliderId = 0;
     }
+    m_previousPointerTargets = m_virtualControlBounds;
+    m_controllerClicks.clear();
+}
+
+void ImGuiInputSession::dispatchControllerPointerEvent(const keyboard::PointerEvent &event) {
+    if (!ImGui::GetCurrentContext() || event.source == keyboard::PointerSource::Desktop) {
+        return;
+    }
+
+    const std::size_t index = controllerIndex(event.source);
+    ControllerPointerState &pointer = m_controllerPointers[index];
+    ImGuiIO &io = ImGui::GetIO();
+    switch (event.type) {
+    case keyboard::PointerEventType::Move:
+        pointer.visible = true;
+        pointer.x = event.x;
+        pointer.y = event.y;
+        if (pointer.editorMouseCapture) {
+            io.AddMousePosEvent(static_cast<float>(event.x), static_cast<float>(event.y));
+        }
+        break;
+    case keyboard::PointerEventType::Press:
+        pointer.visible = true;
+        pointer.down = true;
+        pointer.x = event.x;
+        pointer.y = event.y;
+        pointer.pressedTargetId = pointerTargetAt(event.x, event.y);
+        if (pointer.pressedTargetId == m_editorId && m_controllerEditorOwner < 0 &&
+            !io.MouseDown[ImGuiMouseButton_Left]) {
+            pointer.editorMouseCapture = true;
+            m_controllerEditorOwner = static_cast<int>(index);
+            io.AddMousePosEvent(static_cast<float>(event.x), static_cast<float>(event.y));
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        }
+        break;
+    case keyboard::PointerEventType::Release: {
+        pointer.visible = true;
+        pointer.x = event.x;
+        pointer.y = event.y;
+        if (pointer.editorMouseCapture) {
+            io.AddMousePosEvent(static_cast<float>(event.x), static_cast<float>(event.y));
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+            pointer.editorMouseCapture = false;
+            m_controllerEditorOwner = -1;
+        }
+        const ImGuiID releasedTarget = pointerTargetAt(event.x, event.y);
+        if (pointer.down && pointer.pressedTargetId != 0 &&
+            releasedTarget == pointer.pressedTargetId) {
+            m_controllerClicks.push_back({releasedTarget, ImVec2(
+                static_cast<float>(event.x), static_cast<float>(event.y))});
+        }
+        pointer.down = false;
+        pointer.pressedTargetId = 0;
+        break;
+    }
+    case keyboard::PointerEventType::Leave:
+        pointer.visible = false;
+        pointer.x = -1;
+        pointer.y = -1;
+        if (pointer.editorMouseCapture) {
+            io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+        }
+        break;
+    case keyboard::PointerEventType::Cancel:
+        pointer.visible = false;
+        pointer.down = false;
+        pointer.x = -1;
+        pointer.y = -1;
+        pointer.pressedTargetId = 0;
+        if (pointer.editorMouseCapture) {
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+            io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+            pointer.editorMouseCapture = false;
+            m_controllerEditorOwner = -1;
+        }
+        break;
+    }
+}
+
+void ImGuiInputSession::registerPointerTarget(const ImVec4 &bounds, ImGuiID id, bool virtualControl) {
+    m_virtualControlBounds.push_back({bounds, id, virtualControl});
+}
+
+ImGuiID ImGuiInputSession::pointerTargetAt(int x, int y) const {
+    for (auto target = m_previousPointerTargets.rbegin(); target != m_previousPointerTargets.rend(); ++target) {
+        if (x >= target->bounds.x && x < target->bounds.z &&
+            y >= target->bounds.y && y < target->bounds.w) {
+            return target->id;
+        }
+    }
+    return 0;
+}
+
+bool ImGuiInputSession::controllerPointerOver(ImGuiID id, const ImVec4 &bounds) const {
+    for (const ControllerPointerState &pointer : m_controllerPointers) {
+        if (pointer.visible && (!pointer.down || pointer.pressedTargetId == id) &&
+            pointer.x >= bounds.x && pointer.x < bounds.z &&
+            pointer.y >= bounds.y && pointer.y < bounds.w) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ImGuiInputSession::controllerPointerDownOn(ImGuiID id) const {
+    return std::any_of(m_controllerPointers.begin(), m_controllerPointers.end(), [id](const auto &pointer) {
+        return pointer.visible && pointer.down && pointer.pressedTargetId == id;
+    });
+}
+
+bool ImGuiInputSession::consumeControllerClick(ImGuiID id, ImVec2 *position) {
+    bool found = false;
+    m_controllerClicks.erase(std::remove_if(m_controllerClicks.begin(), m_controllerClicks.end(),
+        [id, position, &found](const ControllerClick &click) {
+            if (click.targetId != id) {
+                return false;
+            }
+            if (position) {
+                *position = click.position;
+            }
+            found = true;
+            return true;
+        }), m_controllerClicks.end());
+    return found;
 }
 
 ImGuiInputSession::EditorInteraction ImGuiInputSession::drawEditor(
@@ -103,18 +231,27 @@ ImGuiInputSession::EditorInteraction ImGuiInputSession::drawEditor(
     const ImVec2 actualSize = ImGui::CalcItemSize(size, ImGui::CalcItemWidth(), ImGui::GetFrameHeight());
     const ImRect bounds(position, ImVec2(position.x + actualSize.x, position.y + actualSize.y));
     m_editorId = window->GetID(label);
+    const ImRect visibleBounds(ImMax(bounds.Min, window->ClipRect.Min), ImMin(bounds.Max, window->ClipRect.Max));
+    if (!window->SkipItems && visibleBounds.GetWidth() > 0.0f && visibleBounds.GetHeight() > 0.0f) {
+        registerPointerTarget(ImVec4(visibleBounds.Min.x, visibleBounds.Min.y,
+                                     visibleBounds.Max.x, visibleBounds.Max.y), m_editorId, false);
+    }
 
     const ImGuiIO &io = ImGui::GetIO();
-    const bool clicked = io.MouseClicked[ImGuiMouseButton_Left] &&
+    const bool desktopClicked = io.MouseClicked[ImGuiMouseButton_Left] &&
         ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
         window->ClipRect.Contains(io.MouseClickedPos[ImGuiMouseButton_Left]) &&
         bounds.Contains(io.MouseClickedPos[ImGuiMouseButton_Left]);
+    const bool controllerClicked = consumeControllerClick(m_editorId);
+    const bool clicked = desktopClicked || controllerClicked;
+    const bool controllerEditorGesture = std::any_of(m_controllerPointers.begin(), m_controllerPointers.end(),
+        [](const ControllerPointerState &pointer) { return pointer.editorMouseCapture; });
     if (io.MouseClicked[ImGuiMouseButton_Left]) {
-        m_editorPointerGesture = clicked;
+        m_editorPointerGesture = clicked || controllerEditorGesture;
     }
 
     // 활성 앱은 이 편집창에 포커스를 유지하되, 이미 활성인 편집창을 매 프레임 재초기화하지 않는다.
-    if (requestFocus && ImGui::GetActiveID() != m_editorId) {
+    if ((requestFocus || controllerClicked) && ImGui::GetActiveID() != m_editorId) {
         ImGui::SetKeyboardFocusHere();
     }
     {
@@ -149,23 +286,29 @@ bool ImGuiInputSession::button(const char *label, const ImVec2 &size, bool selec
         return false;
     }
     const ImRect visibleBounds(ImMax(bounds.Min, window->ClipRect.Min), ImMin(bounds.Max, window->ClipRect.Max));
-    m_virtualControlBounds.emplace_back(visibleBounds.Min.x, visibleBounds.Min.y,
-                                        visibleBounds.Max.x, visibleBounds.Max.y);
+    registerPointerTarget(ImVec4(visibleBounds.Min.x, visibleBounds.Min.y,
+                                 visibleBounds.Max.x, visibleBounds.Max.y), id);
 
     const ImGuiIO &io = ImGui::GetIO();
     const bool windowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
-    const bool hovered = enabled && windowHovered && ImGui::IsMouseHoveringRect(bounds.Min, bounds.Max, true);
+    const bool desktopHovered = windowHovered && ImGui::IsMouseHoveringRect(bounds.Min, bounds.Max, true);
+    const bool controllerHovered = controllerPointerOver(
+        id, ImVec4(visibleBounds.Min.x, visibleBounds.Min.y,
+                   visibleBounds.Max.x, visibleBounds.Max.y));
+    const bool hovered = enabled && (desktopHovered || controllerHovered);
     if (hovered) {
         // HoveredId만 등록하고 편집창의 ActiveId와 키보드 포커스는 바꾸지 않는다.
         ImGui::SetHoveredID(id);
     }
-    if (enabled && io.MouseClicked[ImGuiMouseButton_Left] && windowHovered &&
+    if (enabled && io.MouseClicked[ImGuiMouseButton_Left] && desktopHovered &&
         window->ClipRect.Contains(io.MouseClickedPos[ImGuiMouseButton_Left]) &&
         bounds.Contains(io.MouseClickedPos[ImGuiMouseButton_Left])) {
         m_pressedButtonId = id;
     }
 
-    const bool held = m_pressedButtonId == id && io.MouseDown[ImGuiMouseButton_Left] && hovered;
+    const bool desktopHeld = m_pressedButtonId == id && io.MouseDown[ImGuiMouseButton_Left] && desktopHovered;
+    const bool controllerHeld = controllerPointerDownOn(id) && controllerHovered;
+    const bool held = desktopHeld || controllerHeld;
     const ImGuiCol normalColor = !enabled ? ImGuiCol_FrameBg : selected ? ImGuiCol_Header : ImGuiCol_Button;
     const ImGuiCol hoveredColor = selected ? ImGuiCol_HeaderHovered : ImGuiCol_ButtonHovered;
     const ImGuiCol activeColor = selected ? ImGuiCol_HeaderActive : ImGuiCol_ButtonActive;
@@ -180,11 +323,13 @@ bool ImGuiInputSession::button(const char *label, const ImVec2 &size, bool selec
     }
 
     // 프로토타입과 같이 같은 버튼 안에서 뗀 경우에만 한 번 실행하고, 드래그 이탈은 취소한다.
+    bool desktopActivated = false;
     if (enabled && m_pressedButtonId == id && io.MouseReleased[ImGuiMouseButton_Left]) {
         m_pressedButtonId = 0;
-        return hovered;
+        desktopActivated = desktopHovered;
     }
-    return false;
+    const bool controllerClick = consumeControllerClick(id);
+    return desktopActivated || (enabled && controllerClick);
 }
 
 bool ImGuiInputSession::sliderFloat(const char *label, const ImVec2 &size, float &value,
@@ -202,27 +347,46 @@ bool ImGuiInputSession::sliderFloat(const char *label, const ImVec2 &size, float
         return false;
     }
     const ImRect visibleBounds(ImMax(bounds.Min, window->ClipRect.Min), ImMin(bounds.Max, window->ClipRect.Max));
-    m_virtualControlBounds.emplace_back(visibleBounds.Min.x, visibleBounds.Min.y,
-                                        visibleBounds.Max.x, visibleBounds.Max.y);
+    registerPointerTarget(ImVec4(visibleBounds.Min.x, visibleBounds.Min.y,
+                                 visibleBounds.Max.x, visibleBounds.Max.y), id);
     const ImGuiIO &io = ImGui::GetIO();
-    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+    const bool desktopHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
         ImGui::IsMouseHoveringRect(bounds.Min, bounds.Max, true);
+    const bool controllerHovered = controllerPointerOver(
+        id, ImVec4(visibleBounds.Min.x, visibleBounds.Min.y,
+                   visibleBounds.Max.x, visibleBounds.Max.y));
+    const bool hovered = desktopHovered || controllerHovered;
     if (hovered) {
         ImGui::SetHoveredID(id);
-        if (io.MouseClicked[ImGuiMouseButton_Left]) {
-            m_draggedSliderId = id;
-        }
+    }
+    if (desktopHovered && io.MouseClicked[ImGuiMouseButton_Left]) {
+        m_draggedSliderId = id;
     }
     // 설정 슬라이더도 가상 버튼처럼 ActiveId를 변경하지 않아 IME 조합과 드래그가 충돌하지 않는다.
-    const bool dragging = m_draggedSliderId == id;
+    const bool desktopDragging = m_draggedSliderId == id;
+    const bool controllerDragging = controllerPointerDownOn(id);
+    ImVec2 controllerClickPosition{};
+    const bool controllerClicked = consumeControllerClick(id, &controllerClickPosition);
+    const bool dragging = desktopDragging || controllerDragging || controllerClicked;
     const float previousValue = value;
     constexpr float thumbWidth = 12.0f;
     const float travel = std::max(1.0f, actualSize.x - thumbWidth);
     value = std::clamp(value, minimum, maximum);
-    if (dragging) {
-        const float fraction = std::clamp((io.MousePos.x - position.x - thumbWidth * 0.5f) / travel,
+    const auto setFromX = [&](float pointerX) {
+        const float fraction = std::clamp((pointerX - position.x - thumbWidth * 0.5f) / travel,
                                           0.0f, 1.0f);
         value = minimum + fraction * (maximum - minimum);
+    };
+    if (desktopDragging) {
+        setFromX(io.MousePos.x);
+    }
+    if (controllerClicked) {
+        setFromX(controllerClickPosition.x);
+    }
+    for (const ControllerPointerState &pointer : m_controllerPointers) {
+        if (pointer.visible && pointer.down && pointer.pressedTargetId == id) {
+            setFromX(static_cast<float>(pointer.x));
+        }
     }
     ImGui::RenderFrame(bounds.Min, bounds.Max, ImGui::GetColorU32(
         dragging ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg),
@@ -252,12 +416,16 @@ bool ImGuiInputSession::horizontalScrollbar(const char *label, const ImVec2 &siz
         return false;
     }
     const ImRect visibleBounds(ImMax(bounds.Min, window->ClipRect.Min), ImMin(bounds.Max, window->ClipRect.Max));
-    m_virtualControlBounds.emplace_back(visibleBounds.Min.x, visibleBounds.Min.y,
-                                        visibleBounds.Max.x, visibleBounds.Max.y);
+    registerPointerTarget(ImVec4(visibleBounds.Min.x, visibleBounds.Min.y,
+                                 visibleBounds.Max.x, visibleBounds.Max.y), id);
 
     const ImGuiIO &io = ImGui::GetIO();
-    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+    const bool desktopHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
         ImGui::IsMouseHoveringRect(bounds.Min, bounds.Max, true);
+    const bool controllerHovered = controllerPointerOver(
+        id, ImVec4(visibleBounds.Min.x, visibleBounds.Min.y,
+                   visibleBounds.Max.x, visibleBounds.Max.y));
+    const bool hovered = desktopHovered || controllerHovered;
     if (hovered) {
         ImGui::SetHoveredID(id);
     }
@@ -271,18 +439,34 @@ bool ImGuiInputSession::horizontalScrollbar(const char *label, const ImVec2 &siz
         : actualSize.x;
     const float travel = actualSize.x - thumbWidth;
     float thumbX = position.x + (maxScroll > 0.0f ? scroll / maxScroll * travel : 0.0f);
-    if (hovered && io.MouseClicked[ImGuiMouseButton_Left] && travel > 0.0f) {
+    if (desktopHovered && io.MouseClicked[ImGuiMouseButton_Left] && travel > 0.0f) {
         m_draggedScrollbarId = id;
         // 손잡이를 잡은 위치를 유지하고, 트랙 클릭은 손잡이 중심을 해당 위치로 옮긴다.
         const float clickX = io.MouseClickedPos[ImGuiMouseButton_Left].x;
         m_scrollbarGrabOffset = clickX >= thumbX && clickX <= thumbX + thumbWidth
             ? clickX - thumbX : thumbWidth * 0.5f;
     }
-    const bool dragging = m_draggedScrollbarId == id;
-    if (dragging && travel > 0.0f) {
+    const bool desktopDragging = m_draggedScrollbarId == id;
+    const bool controllerDragging = controllerPointerDownOn(id);
+    ImVec2 controllerClickPosition{};
+    const bool controllerClicked = consumeControllerClick(id, &controllerClickPosition);
+    const bool dragging = desktopDragging || controllerDragging || controllerClicked;
+    if (desktopDragging && travel > 0.0f) {
         scroll = std::clamp((io.MousePos.x - position.x - m_scrollbarGrabOffset) / travel,
                             0.0f, 1.0f) * maxScroll;
         thumbX = position.x + scroll / maxScroll * travel;
+    }
+    if (controllerClicked && travel > 0.0f) {
+        scroll = std::clamp((controllerClickPosition.x - position.x - thumbWidth * 0.5f) / travel,
+                            0.0f, 1.0f) * maxScroll;
+        thumbX = position.x + scroll / maxScroll * travel;
+    }
+    for (const ControllerPointerState &pointer : m_controllerPointers) {
+        if (pointer.visible && pointer.down && pointer.pressedTargetId == id && travel > 0.0f) {
+            scroll = std::clamp((static_cast<float>(pointer.x) - position.x - thumbWidth * 0.5f) / travel,
+                                0.0f, 1.0f) * maxScroll;
+            thumbX = position.x + scroll / maxScroll * travel;
+        }
     }
     // ImGui 기본 스크롤바의 ActiveId 변경을 피하고 가로 스크롤 위치만 갱신한다.
     ImDrawList *drawList = ImGui::GetWindowDrawList();
@@ -313,12 +497,16 @@ bool ImGuiInputSession::verticalScrollbar(const char *label, const ImVec2 &size,
                                 ImMax(bounds.Min.y, window->ClipRect.Min.y));
     const ImVec2 visibleMaximum(ImMin(bounds.Max.x, window->ClipRect.Max.x),
                                 ImMin(bounds.Max.y, window->ClipRect.Max.y));
-    m_virtualControlBounds.emplace_back(visibleMinimum.x, visibleMinimum.y,
-                                        visibleMaximum.x, visibleMaximum.y);
+    registerPointerTarget(ImVec4(visibleMinimum.x, visibleMinimum.y,
+                                 visibleMaximum.x, visibleMaximum.y), id);
 
     const ImGuiIO &io = ImGui::GetIO();
-    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+    const bool desktopHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
         ImGui::IsMouseHoveringRect(bounds.Min, bounds.Max, true);
+    const bool controllerHovered = controllerPointerOver(
+        id, ImVec4(visibleMinimum.x, visibleMinimum.y,
+                   visibleMaximum.x, visibleMaximum.y));
+    const bool hovered = desktopHovered || controllerHovered;
     if (hovered) {
         ImGui::SetHoveredID(id);
     }
@@ -332,17 +520,33 @@ bool ImGuiInputSession::verticalScrollbar(const char *label, const ImVec2 &size,
         : actualSize.y;
     const float travel = actualSize.y - thumbHeight;
     float thumbY = position.y + (maxScroll > 0.0f ? scroll / maxScroll * travel : 0.0f);
-    if (hovered && io.MouseClicked[ImGuiMouseButton_Left] && travel > 0.0f) {
+    if (desktopHovered && io.MouseClicked[ImGuiMouseButton_Left] && travel > 0.0f) {
         m_draggedScrollbarId = id;
         const float clickY = io.MouseClickedPos[ImGuiMouseButton_Left].y;
         m_scrollbarGrabOffset = clickY >= thumbY && clickY <= thumbY + thumbHeight
             ? clickY - thumbY : thumbHeight * 0.5f;
     }
-    const bool dragging = m_draggedScrollbarId == id;
-    if (dragging && travel > 0.0f) {
+    const bool desktopDragging = m_draggedScrollbarId == id;
+    const bool controllerDragging = controllerPointerDownOn(id);
+    ImVec2 controllerClickPosition{};
+    const bool controllerClicked = consumeControllerClick(id, &controllerClickPosition);
+    const bool dragging = desktopDragging || controllerDragging || controllerClicked;
+    if (desktopDragging && travel > 0.0f) {
         scroll = std::clamp((io.MousePos.y - position.y - m_scrollbarGrabOffset) / travel,
                             0.0f, 1.0f) * maxScroll;
         thumbY = position.y + scroll / maxScroll * travel;
+    }
+    if (controllerClicked && travel > 0.0f) {
+        scroll = std::clamp((controllerClickPosition.y - position.y - thumbHeight * 0.5f) / travel,
+                            0.0f, 1.0f) * maxScroll;
+        thumbY = position.y + scroll / maxScroll * travel;
+    }
+    for (const ControllerPointerState &pointer : m_controllerPointers) {
+        if (pointer.visible && pointer.down && pointer.pressedTargetId == id && travel > 0.0f) {
+            scroll = std::clamp((static_cast<float>(pointer.y) - position.y - thumbHeight * 0.5f) / travel,
+                                0.0f, 1.0f) * maxScroll;
+            thumbY = position.y + scroll / maxScroll * travel;
+        }
     }
 
     ImDrawList *drawList = ImGui::GetWindowDrawList();
@@ -446,7 +650,8 @@ bool ImGuiInputSession::backspaceEditor(std::string &text) {
 
 bool ImGuiInputSession::isVirtualControlAt(int x, int y) const {
     return std::any_of(m_virtualControlBounds.begin(), m_virtualControlBounds.end(),
-                      [x, y](const ImVec4 &bounds) {
-        return x >= bounds.x && x < bounds.z && y >= bounds.y && y < bounds.w;
+                      [x, y](const PointerTarget &target) {
+        return target.virtualControl && x >= target.bounds.x && x < target.bounds.z &&
+            y >= target.bounds.y && y < target.bounds.w;
     });
 }

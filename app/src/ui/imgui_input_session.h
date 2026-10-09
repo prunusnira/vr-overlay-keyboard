@@ -1,7 +1,10 @@
 #pragma once
 
+#include "../core/app_contracts.h"
+
 #include <imgui.h>
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -16,6 +19,7 @@ public:
 
     void beginFrame();
     void endFrame();
+    void dispatchControllerPointerEvent(const keyboard::PointerEvent &event);
     EditorInteraction drawEditor(const char *label, std::string &text,
                                  const ImVec2 &size, bool requestFocus);
     bool button(const char *label, const ImVec2 &size, bool selected = false, bool enabled = true);
@@ -35,6 +39,32 @@ public:
     bool isVirtualControlAt(int x, int y) const;
 
 private:
+    struct PointerTarget {
+        ImVec4 bounds;
+        ImGuiID id = 0;
+        bool virtualControl = false;
+    };
+
+    struct ControllerPointerState {
+        bool visible = false;
+        bool down = false;
+        int x = -1;
+        int y = -1;
+        ImGuiID pressedTargetId = 0;
+        bool editorMouseCapture = false;
+    };
+
+    struct ControllerClick {
+        ImGuiID targetId = 0;
+        ImVec2 position{};
+    };
+
+    void registerPointerTarget(const ImVec4 &bounds, ImGuiID id, bool virtualControl = true);
+    ImGuiID pointerTargetAt(int x, int y) const;
+    bool controllerPointerOver(ImGuiID id, const ImVec4 &bounds) const;
+    bool controllerPointerDownOn(ImGuiID id) const;
+    bool consumeControllerClick(ImGuiID id, ImVec2 *position = nullptr);
+
     ImGuiID m_editorId = 0;
     ImGuiID m_pressedButtonId = 0;
     ImGuiID m_draggedScrollbarId = 0;
@@ -42,5 +72,9 @@ private:
     float m_scrollbarGrabOffset = 0.0f;
     bool m_editorPointerGesture = false;
     // 직전 화면에서 실제로 보인 버튼/스크롤바의 영역만 Windows 포인터 어댑터가 조회한다.
-    std::vector<ImVec4> m_virtualControlBounds;
+    std::vector<PointerTarget> m_virtualControlBounds;
+    std::vector<PointerTarget> m_previousPointerTargets;
+    std::array<ControllerPointerState, 2> m_controllerPointers{};
+    std::vector<ControllerClick> m_controllerClicks;
+    int m_controllerEditorOwner = -1;
 };

@@ -6,6 +6,7 @@
 #include "imgui_input_session.h"
 #include "settings_ui.h"
 
+#include <array>
 #include <functional>
 #include <string>
 #include <vector>
@@ -39,6 +40,12 @@ private:
             Backspace,
         } kind = Kind::Roman;
         char roman = '\0';
+    };
+
+    struct ControllerCursor {
+        bool visible = false;
+        int x = -1;
+        int y = -1;
     };
 
     void requestEditorFocus();
@@ -97,6 +104,7 @@ private:
     bool m_pointerCursorVisible = false;
     int m_pointerCursorX = -1;
     int m_pointerCursorY = -1;
+    std::array<ControllerCursor, 2> m_controllerCursors{};
     float m_candidateScrollX = 0.0f;
     bool m_candidateScrollRequested = false;
     bool m_submitAfterComposition = false;

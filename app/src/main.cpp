@@ -148,7 +148,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             if (actionSource.initialize(manifestPath.u8string(), [&keyboardApplication]() {
                     keyboardApplication.toggleOverlay();
                 }, [&overlay, &keyboardApplication](const keyboard::ControllerPointerSamples &samples) {
-                    // 옵션에서 고른 한 손만 포인터 선택과 Grip 이동에 사용한다.
+                    // 양손 샘플을 모두 오버레이에 전달해 손별 포인터 입력을 유지한다.
                     overlay.handleControllerPointers(samples,
                                                      keyboardApplication.state().settings);
                 }, [&keyboardApplication](const std::vector<keyboard::ControllerButtonState> &buttons) {

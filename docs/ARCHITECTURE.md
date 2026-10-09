@@ -16,14 +16,14 @@ SteamVR 대시보드를 열지 않고 VR 사용 중 정해둔 커맨드로 키�
 
 현재 프로토타입은 `CreateDashboardOverlay`로 대시보드 탭을 만들고 `ShowDashboard`를 호출한다. `ShowDashboard`는 지정한 탭이 보이도록 VR 대시보드를 표시하는 API다. 따라서 현재 구현은 SteamVR 메뉴를 여는 동작과 연결돼 있다. [프로토타입 오버레이 구현](../prototype/windows-ime-overlay/src/overlay/openvr_overlay.cpp), [Valve `ShowDashboard` 설명](https://github.com/ValveSoftware/openvr/wiki/IVROverlay%3A%3AShowDashboard)
 
-제품 경로에서는 일반 오버레이를 만들고, 첫 표시 때 HMD의 현재 포즈로부터 앞쪽 위치를 계산해 `TrackingUniverseStanding` 절대 좌표에 둔다. 이후 위치는 방 안에 고정하되, 매 입력 갱신에서 회전만 HMD를 향하게 계산해 화면 정면이 사용자를 바라보도록 한다. 숨겼다가 다시 표시해도 마지막 위치를 보존한다. 선택한 손의 SteamVR 포인터 자세와 클릭을 받는다. 보이는 오버레이 안에서는 `IVROverlay::ComputeOverlayIntersection`의 UV를 사용하고, 보정으로 이동한 입력 영역이 패널 바깥에 있을 때는 저장된 변환의 평면에 광선을 투영해 연장 영역 좌표를 계산한다. 각 축은 `u' = u + offsetPercent / 100`으로 일정하게 이동하므로 포인터 속도가 오프셋에 따라 달라지지 않는다. 보정 결과가 0~1 범위를 벗어나면 입력하지 않으며, 이에 따라 보이지 않는 활성 영역이 보정 방향 반대로 확장되어 전체 UI에 접근할 수 있다. Move·Press·Release에 같은 보정 좌표를 사용해 커서 표시와 클릭 위치를 일치시킨다. 기본 세로 보정은 +2.4%이며, 각 축은 -50%에서 +50%까지 바꿀 수 있다. 이전 곡선 보정은 사용자가 HMD에서 확인했으나 속도 편차가 보고되어 현재의 선형 보정과 확장 입력 영역으로 교체했다. 이 동작의 HMD 확인은 추가로 필요하다. 오버레이를 가리킨 상태에서 해당 손의 Grip을 누르면 시작 시점의 컨트롤러-오버레이 간격을 보존하며 컨트롤러를 따라 이동하고, Grip을 놓으면 절대 좌표에 고정된다. Grip을 누른 채 스틱을 좌우로 기울이면 오버레이 폭을 바꾸고, 위아래로 기울이면 컨트롤러 앞쪽 거리를 조정한다. [Valve 오버레이 개요](https://github.com/ValveSoftware/openvr/wiki/IVROverlay_Overview), [일반 오버레이 생성](https://github.com/ValveSoftware/openvr/wiki/IVROverlay%3A%3ACreateOverlay), [절대 추적 좌표 위치](https://github.com/ValveSoftware/openvr/wiki/IVROverlay%3A%3ASetOverlayTransformAbsolute), [광선 교차 계산](https://github.com/ValveSoftware/openvr/wiki/IVROverlay%3A%3AComputeOverlayIntersection), [SteamVR Input 액션](https://github.com/ValveSoftware/openvr/wiki/Action-manifest), [현재 Valve OpenVR 헤더](https://github.com/ValveSoftware/openvr/blob/master/headers/openvr.h)
+제품 경로에서는 일반 오버레이를 만들고, 첫 표시 때 HMD의 현재 포즈로부터 앞쪽 위치를 계산해 `TrackingUniverseStanding` 절대 좌표에 둔다. 이후 위치는 방 안에 고정하되, 매 입력 갱신에서 회전만 HMD를 향하게 계산해 화면 정면이 사용자를 바라보도록 한다. 숨겼다가 다시 표시해도 마지막 위치를 보존한다. 양손의 SteamVR 포인터 자세와 클릭을 함께 받으며, 두 커서는 서로 다른 색과 손 표시로 구분한다. 보이는 오버레이 안에서는 `IVROverlay::ComputeOverlayIntersection`의 UV를 사용하고, 보정으로 이동한 입력 영역이 패널 바깥에 있을 때는 저장된 변환의 평면에 광선을 투영해 연장 영역 좌표를 계산한다. 각 축은 `u' = u + offsetPercent / 100`으로 일정하게 이동하므로 포인터 속도가 오프셋에 따라 달라지지 않는다. 보정 결과가 0~1 범위를 벗어나면 입력하지 않으며, 이에 따라 보이지 않는 활성 영역이 보정 방향 반대로 확장되어 전체 UI에 접근할 수 있다. Move·Press·Release에 같은 보정 좌표를 사용해 커서 표시와 클릭 위치를 일치시킨다. 기본 세로 보정은 +2.4%이며, 각 축은 -50%에서 +50%까지 바꿀 수 있다. 이전 곡선 보정은 사용자가 HMD에서 확인했으나 속도 편차가 보고되어 현재의 선형 보정과 확장 입력 영역으로 교체했다. 이 동작의 HMD 확인은 추가로 필요하다. 오버레이를 가리킨 손의 Grip을 누르면 시작 시점의 컨트롤러-오버레이 간격을 보존하며 컨트롤러를 따라 이동하고, Grip을 놓으면 절대 좌표에 고정된다. 이동 중에는 두 손의 클릭을 취소한다. Grip을 누른 손의 스틱을 좌우로 기울이면 오버레이 폭을 바꾸고, 위아래로 기울이면 컨트롤러 앞쪽 거리를 조정한다. [Valve 오버레이 개요](https://github.com/ValveSoftware/openvr/wiki/IVROverlay_Overview), [일반 오버레이 생성](https://github.com/ValveSoftware/openvr/wiki/IVROverlay%3A%3ACreateOverlay), [절대 추적 좌표 위치](https://github.com/ValveSoftware/openvr/wiki/IVROverlay%3A%3ASetOverlayTransformAbsolute), [광선 교차 계산](https://github.com/ValveSoftware/openvr/wiki/IVROverlay%3A%3AComputeOverlayIntersection), [SteamVR Input 액션](https://github.com/ValveSoftware/openvr/wiki/Action-manifest), [현재 Valve OpenVR 헤더](https://github.com/ValveSoftware/openvr/blob/master/headers/openvr.h)
 
 권장 표시 흐름은 다음과 같다.
 
 1. 앱이 SteamVR에 연결되면 일반 오버레이를 생성하고 시작 상태를 숨김으로 둔다.
-2. SteamVR Input의 토글·포인터·좌우 스틱·좌우 소환 버튼 액션을 계속 확인한다. Meta Quest Touch는 기본 포인터 자세·트리거 클릭·양손 Grip·스틱 바인딩을 제공하며, 옵션에서 포인터 손을 고른다.
+2. SteamVR Input의 토글·포인터·좌우 스틱·좌우 소환 버튼 액션을 계속 확인한다. Meta Quest Touch 기본 프로필은 양손의 포인터 자세·트리거 클릭·Grip·스틱 바인딩을 제공한다.
 3. 기존 `ToggleKeyboard`는 표시와 숨김을 전환한다. 설정한 소환 버튼 조합은 모든 버튼을 동시에 누른 뒤 설정한 홀드 시간이 지나면 숨겨진 키보드를 표시하며, 0초는 첫 동시 입력 갱신에서 발화한다.
-4. 첫 표시 위치를 HMD 기준으로 계산한 뒤 standing 추적 좌표의 월드 위치로 고정하고, 회전은 사용자를 향하게 계속 갱신한다. 선택한 손의 컨트롤러 광선과 트리거로 포인터 선택을 하고, 포인터가 보이도록 커서를 텍스처에 그린다. 오버레이를 가리키고 Grip을 잡아 이동하는 동안 스틱 좌우로 크기를, 위아래로 거리를 조절한다. Grip을 놓으면 그 위치와 크기에 고정한다. 키보드 화면의 숨김 버튼은 오버레이만 감춘다.
+4. 첫 표시 위치를 HMD 기준으로 계산한 뒤 standing 추적 좌표의 월드 위치로 고정하고, 회전은 사용자를 향하게 계속 갱신한다. 양손의 광선과 트리거를 독립적으로 처리해 포인터 두 개를 표시하고, 서로 다른 가상 키 클릭은 같은 UI 갱신에서 모두 반영한다. 어느 한 손의 Grip으로 이동을 시작하면 이동 중 클릭은 취소한다. Grip을 누른 손의 스틱 좌우로 크기를, 위아래로 거리를 조절한다. Grip을 놓으면 그 위치와 크기에 고정한다. 키보드 화면의 숨김 버튼은 오버레이만 감춘다.
 
 manifest는 Meta Quest Touch(`oculus_touch`)용 기본 포인터 자세·트리거 클릭·그립 바인딩을 포함한다. Quest의 기본 소환 조합은 오른쪽 Grip+B에 연결된다. ToggleKeyboard는 사용자가 기존 SteamVR 바인딩을 유지할 수 있도록 기본 프로필에 강제하지 않는다. 다른 컨트롤러 유형은 각 액션을 SteamVR 입력 설정에서 연결해야 한다. 옵션 창은 키보드와 같은 ImGui 프레임에 그리므로 데스크톱과 단일 OpenVR 오버레이 이미지에 함께 표시된다. 일반 사용 흐름에서 키보드를 열고 닫을 때마다 대시보드를 열 필요는 없다. 제품 앱의 소환 조합, 공간 고정과 사용자 방향 회전, Grip 이동, 일반 오버레이 포인터 조작과 토글 액션 수신은 HMD에서 확인해야 한다.
 
@@ -33,15 +33,15 @@ manifest는 Meta Quest Touch(`oculus_touch`)용 기본 포인터 자세·트리�
 | --- | --- | --- |
 | `app_core` | 오버레이 표시·숨김, 설정 적용·저장, 사용자 상태와 `ControllerSummonTrigger`의 동시 누름·홀드 판정을 조정한다. | UI 프레임워크, OpenVR, Win32, OSC 구현 |
 | `steamvr_action_input` | SteamVR Input 토글·포인터·스틱 액션과 좌우 14개 논리 버튼 액션을 앱 커맨드 및 컨트롤러 포인터·버튼 샘플로 바꾼다. | 오버레이 렌더링, IME 구현 |
-| `keyboard_ui` | Dear ImGui로 입력란, 키, 후보, 입력 언어, 현지화된 앱 UI와 옵션 창을 그린다. 후보 영역은 고정 높이의 가로 스크롤로 유지한다. 사용자 동작을 앱 계약으로 내보내고 오버레이 포인터 입력을 ImGuiIO 이벤트로 받는다. | TSF, Win32, OpenVR, UDP 구현 |
+| `keyboard_ui` | Dear ImGui로 입력란, 키, 후보, 입력 언어, 현지화된 앱 UI와 옵션 창을 그린다. 후보 영역은 고정 높이의 가로 스크롤로 유지한다. 양손 커서를 구분해 그리며, 사용자 동작을 앱 계약으로 내보낸다. | TSF, Win32, OpenVR, UDP 구현 |
 | `ui/settings_ui` | 언어·포인터 가로/세로 보정·소환 버튼 조합·유지시간을 편집하는 별도 ImGui 창을 그린다. 키보드와 같은 입력 세션을 사용해 편집 포커스를 보존하고 같은 렌더 프레임에 포함한다. | Windows 설정 파일, SteamVR, OpenVR |
-| `ui/imgui_input_session` | 편집창과 가상 버튼의 포인터 이벤트를 분리하고, 같은 버튼에서 뗐을 때 한 번 동작을 실행한다. 후보 스크롤도 편집창 포커스를 유지한다. `keyboard_ui` 타깃 안의 별도 UI 모듈이다. | Windows 전경 전환, SendInput, TSF 구현 |
+| `ui/imgui_input_session` | 데스크톱 마우스는 ImGui 입력으로 유지하고, 좌우 컨트롤러는 손별 히트 테스트와 누름·뗌 상태로 가상 UI를 독립 조작한다. 같은 컨트롤에 두 손의 클릭이 겹치면 한 번 실행한다. 편집창 커서 선택은 단일 ImGui 마우스 입력을 사용하며, 후보 스크롤도 편집창 포커스를 유지한다. `keyboard_ui` 타깃 안의 별도 UI 모듈이다. | Windows 전경 전환, SendInput, TSF 구현 |
 | `platform/windows/ime_composition` | IMM 메시지의 조합 문자열과 확정 문자열을 분리한다. 조합 문자열은 앱 snapshot으로 내보내고 확정 문자열만 편집 입력 큐에 전달한다. `win32_imgui_host` 타깃 안의 별도 Windows 모듈이다. | ImGui 위젯, TSF 후보 선택, OSC |
 | `platform/windows/virtual_mouse_router` | 앱 UI 스레드에 한정된 마우스 훅으로 한국어 가상 버튼 클릭을 공용 포인터 이벤트로 전환한다. 편집창 선택은 일반 입력으로 남기고, 창 밖에서 놓친 뗌/앱 비활성화는 취소한다. | ImGui 위젯, IME 문자열 조합 규칙, OpenVR |
 | `text_input` | 입력 세션, 가상 키 요청, 조합 및 후보 상태를 표현한다. 실제 입력 수단은 어댑터 뒤에 둔다. | 오버레이, OSC |
 | `windows_tsf_input` | TSF UI-less 후보 정보와 후보 선택 동작을 처리한다. Windows 키 전달 경로도 별도 어댑터로 감싼다. | UI, OpenVR |
 | `windows_language` | Windows에서 사용 가능한 입력 언어를 조회하고 선택된 입력 언어를 활성화한다. | 키보드 UI |
-| `openvr_overlay` | 일반 오버레이의 생성·종료, standing 공간 고정 위치와 HMD 방향 회전, Grip 드래그 중 크기·거리 조정, 표시 상태, 이미지 전달과 설정 가능한 가로·세로 보정 컨트롤러 포인터 입력을 처리한다. | 언어, TSF, Chatbox |
+| `openvr_overlay` | 일반 오버레이의 생성·종료, standing 공간 고정 위치와 HMD 방향 회전, Grip 드래그 중 크기·거리 조정, 표시 상태, 이미지 전달과 양손의 독립 포인터 입력을 처리한다. | 언어, TSF, Chatbox |
 | `chatbox_osc` | Chatbox 목적 주소와 OSC 패킷을 처리해 문장을 전송한다. | 키보드 UI, OpenVR |
 | `settings_and_diagnostics` | 사용자 설정과 진단 로그를 관리한다. 초기 버전은 작은 구성 요소로 시작해도 된다. | 특정 화면 구성 |
 | `platform/windows/settings_store` | `%LOCALAPPDATA%`의 설정 파일을 읽고 원자적으로 저장한다. UI 언어, 포인터 보정값, 컨트롤러 버튼 조합, 0~3000ms 유지 시간을 검증한다. | ImGui, OpenVR |
@@ -84,13 +84,13 @@ flowchart TB
     App --> OSC
 ```
 
-화살표는 컴파일 시 참조 방향을 나타낸다. UI와 어댑터는 `app_core` 계약에 의존하고, `app` 조립 지점이 Dear ImGui host와 Windows·OpenVR·OSC 구현을 연결한다. `app_core`는 UI 프레임워크나 구현 모듈을 참조하지 않는다. UI와 어댑터 사이에는 `HWND`, `HKL`, TSF 인터페이스, OpenVR 핸들과 같은 플랫폼 타입을 노출하지 않는다. OpenVR 포인터 이벤트는 앱 계약으로 변환하고, `keyboard_ui`가 이를 ImGuiIO 이벤트로 전달한다.
+화살표는 컴파일 시 참조 방향을 나타낸다. UI와 어댑터는 `app_core` 계약에 의존하고, `app` 조립 지점이 Dear ImGui host와 Windows·OpenVR·OSC 구현을 연결한다. `app_core`는 UI 프레임워크나 구현 모듈을 참조하지 않는다. UI와 어댑터 사이에는 `HWND`, `HKL`, TSF 인터페이스, OpenVR 핸들과 같은 플랫폼 타입을 노출하지 않는다. OpenVR 포인터 이벤트는 손 출처를 포함한 앱 계약으로 변환한다. `keyboard_ui`는 컨트롤러 입력을 `ImGuiInputSession`의 손별 히트 테스트로 보내고 데스크톱 마우스는 기존 ImGuiIO 경로로 둔다.
 
 실행 중에는 커맨드 입력 어댑터가 `ToggleKeyboard`를 앱 코어에 전달하고, 코어가 OpenVR 표시 포트를 호출한다. OpenVR 어댑터가 컨트롤러 포인터 이벤트를 앱 내부 이벤트로 바꿔 UI에 전달한다. UI 동작은 앱 코어 커맨드로 돌아오며, 텍스트 입력·언어·OSC 어댑터는 코어가 정한 계약을 수행한다. UI가 만든 프레임은 앱 조립 지점에서 OpenVR 표시 포트로 전달한다. 이 이벤트 흐름은 모듈 간 컴파일 의존성의 방향과 구분한다.
 
 데스크톱 화면은 매 프레임 렌더링한다. OpenGL 픽셀 readback은 오버레이가 표시 중일 때만 수행하고 약 60Hz로 제한해 숨겨진 동안의 불필요한 동기화 비용을 줄인다. 이 갱신률의 HMD 체감과 GPU별 readback 비용은 실기기에서 판정한다.
 
-Win32 backend가 마우스 위치를 갱신한 뒤, `ImGui::NewFrame` 전에 SteamVR 액션을 읽어 VR 포인터 좌표를 입력 큐에 넣는다. 전체 화면 메인 창은 `NoBringToFrontOnFocus`, 옵션 창은 `NoFocusOnAppearing`을 사용해 편집창 자동 포커스와 옵션 표시 순서가 충돌하지 않게 한다. 포인터 보정 슬라이더는 가상 버튼과 동일하게 ActiveId를 변경하지 않는다. Grip 이동은 패널 교차 판정을 유지하면서 트리거 캡처보다 먼저 처리한다. 소환 Grip은 해제까지 차단하고, 이동 중에는 앱이 보관한 월드 행렬에 사용자 방향 회전을 합쳐 한 번 제출한다. Grip 바인딩·눌림 상태와 이동 시작·종료·실패를 진단에 표시한다. 해당 수정의 HMD 실측은 아직 필요하다.
+Win32 backend가 마우스 위치를 갱신한 뒤 SteamVR 액션을 읽는다. 양손의 Move·Press·Release·Leave·Cancel 이벤트는 `ImGui::NewFrame` 전에 손별 포인터 상태로 반영하고, 가상 버튼·슬라이더·스크롤바는 같은 UI 갱신에서 각각 적중 판정한다. 편집창 포커스를 보존하고 데스크톱 마우스 경로도 유지한다. 전체 화면 메인 창은 `NoBringToFrontOnFocus`, 옵션 창은 `NoFocusOnAppearing`을 사용해 편집창 자동 포커스와 옵션 표시 순서가 충돌하지 않게 한다. 포인터 보정 슬라이더는 가상 버튼과 동일하게 ActiveId를 변경하지 않는다. Grip 이동은 패널 교차 판정을 유지하면서 트리거 캡처보다 먼저 처리한다. 소환 Grip은 해제까지 차단하고, 이동 중에는 앱이 보관한 월드 행렬에 사용자 방향 회전을 합쳐 한 번 제출한다. Grip 바인딩·눌림 상태와 이동 시작·종료·실패를 진단에 표시한다. 양손 포인터와 동시 입력은 HMD에서 확인해야 한다.
 
 현재 Dear ImGui 확정 문자열은 `KeyboardUi`가 보유한다. `WindowsImeComposition`은 Win32 host가 받는 `WM_IME_STARTCOMPOSITION`, `WM_IME_COMPOSITION`, `WM_IME_ENDCOMPOSITION`을 backend보다 먼저 한 번 처리한다. `GCS_COMPSTR`은 고정 미리보기 영역의 조합 snapshot으로 게시하고, `GCS_RESULTSTR`만 ImGui 문자 입력 큐로 넘긴다. 기본 IME 조합 창은 숨기고, TSF 후보 sink는 기존 후보 수집·선택을 담당한다. 조합 중 편집 키는 확정 편집 버퍼에 중복 적용하지 않는다. Clear는 조합을 취소하며, OSC 전송은 조합 확정 후 편집 버퍼에 결과가 반영될 때 실행한다. [Microsoft 조합 메시지 설명](https://learn.microsoft.com/en-us/windows/win32/intl/wm-ime-composition), [조합 창 표시 제어](https://learn.microsoft.com/en-us/windows/win32/intl/wm-ime-setcontext)
 

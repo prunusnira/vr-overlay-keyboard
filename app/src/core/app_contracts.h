@@ -23,6 +23,12 @@ enum class PointerButton {
     Right,
 };
 
+enum class PointerSource : std::uint8_t {
+    Desktop,
+    LeftController,
+    RightController,
+};
+
 enum class ControllerHand {
     Left,
     Right,
@@ -147,6 +153,7 @@ struct ControllerPointerSamples {
 struct PointerEvent {
     PointerEventType type = PointerEventType::Move;
     PointerButton button = PointerButton::None;
+    PointerSource source = PointerSource::Desktop;
     int x = 0;
     int y = 0;
 };
