@@ -37,7 +37,7 @@ Options preserves the editor's input focus and remains above the main keyboard. 
 
 Use **Options** in the keyboard screen to open a separate ImGui settings window. It is drawn in the same frame as the keyboard, so the window appears in both the desktop view and the OpenVR overlay. The language setting changes the app UI only; Windows input language remains a separate control. Korean is the first-run UI language.
 
-The default summon combination is **Right Grip + Right B**, with a **0 second** hold time. Select one or more logical controls in Options and adjust the hold time from 0 to 3 seconds in 0.1-second steps. All selected controls must be pressed together. The combination shows a hidden overlay once; release the controls before it can trigger again. The existing **Toggle Keyboard** SteamVR action remains a show/hide toggle.
+The default summon combination is **Left Grip + Right Grip**, with a **0 second** hold time. Select one or more logical controls in Options and adjust the hold time from 0 to 3 seconds in 0.1-second steps. All selected controls must be pressed together. The combination shows a hidden overlay once; release the controls before it can trigger again. The existing **Toggle Keyboard** SteamVR action remains a show/hide toggle.
 
 Settings are saved to `%LOCALAPPDATA%\VROverlayKeyboard\settings.ini`. Available logical summon actions are left/right Grip, Trigger, A, B, Menu, Joystick, and Trackpad. Other controller models may not expose all controls; bind the selected actions in SteamVR and confirm that Options reports them active. The keyboard screen's **Hide keyboard overlay** button hides the VR overlay without closing the desktop app.
 

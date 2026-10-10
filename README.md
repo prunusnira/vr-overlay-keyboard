@@ -1,9 +1,51 @@
-# vr-overlay-keyboard
+# VR Overlay Keyboard
 
-Windows SteamVR에서 VRChat Chatbox에 문장을 입력하기 위한 오버레이 키보드 프로젝트.
+[English] · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-제품 앱은 `app/`에 새 CMake 프로젝트로 구현한다. 프로토타입에서 확인한 사용자 흐름은 새 앱이 이어받을 동작 기준으로 삼고, 코드는 새 모듈 구조에 맞춰 다시 작성한다. 프로토타입 소스는 제품 앱에 복사하거나 수정하지 않는다. [프로토타입 실행 기록](prototype/windows-ime-overlay/README.md)
+VR Overlay Keyboard is a Windows app that lets you type messages into the VRChat Chatbox with a keyboard shown as a SteamVR overlay.
 
-- [프로젝트 기획](docs/PROJECT_PLAN.md)
-- [기술 조사와 실기기 확인 항목](docs/TECHNICAL_FEASIBILITY.md)
-- [모듈 아키텍처와 오버레이 실행 흐름](docs/ARCHITECTURE.md)
+> **Verified hardware:** The app has only been verified in use with Meta Quest 3. Other headsets and controller combinations have not been verified.
+
+![main display](readme_files/en.png)
+
+## Download
+
+Download it from the [GitHub Releases page](https://github.com/prunusnira/vr-overlay-keyboard/releases).
+
+## Before you start
+
+- Windows 10 or 11, with Steam and SteamVR installed and running.
+- A headset connected to SteamVR. Meta Quest 3 is the only headset verified so far.
+- OSC enabled in VRChat to send text to the Chatbox.
+- Add the Windows input language and keyboard/IME you want to use.
+  - Windows 11: open **Settings > Time & language > Language & region > Add a language**.
+  - Windows 10: open **Settings > Time & language > Language > Add a language**.
+  - After adding it, open that language's **Language options** to check that the keyboard/IME is installed. See [Microsoft's Windows language and keyboard guide](https://support.microsoft.com/en-US/Windows/Hardware/Input-Devices/manage-the-language-and-keyboard-input-layout-settings-in-windows).
+- If the app does not start, install the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe).
+
+## Basic use
+
+1. Start SteamVR, then launch VR Overlay Keyboard. The desktop window opens and the VR overlay starts hidden.
+2. Press both **Grip buttons** at the same time to summon the keyboard.
+   - This is the default. You can change the summon combination in **Options**.
+3. Point a controller at the overlay, select the text field, choose English, Korean, or Japanese, and enter text with the virtual keys.
+4. Enable OSC in VRChat, then select **Fill VRChat Chatbox** to send the text.
+5. To move the overlay, point at it and hold **Grip** while moving your controller. While holding Grip, use that controller's thumbstick to adjust the overlay size and distance.
+
+When the app does not have Windows keyboard focus, Japanese input is composed as Hiragana and Kanji conversion is unavailable. To use Kanji conversion, give the app keyboard window Windows focus with **Focus input**.
+
+## Options
+
+![options](readme_files/en_op.png)
+
+Select **Options** in the keyboard window to:
+
+- Change the app display language between English, Korean, and Japanese.
+- Adjust horizontal and vertical pointer offsets from -50% to +50%. The offsets apply to both controllers.
+- Choose the controller buttons that show the overlay and set how long they must be held (0 to 3 seconds). The default combination is **Left Grip + Right Grip** with no hold delay.
+
+Options are saved automatically on this PC.
+
+## Contact
+
+For questions or help, visit [GitHub Discussions](https://github.com/prunusnira/vr-overlay-keyboard/discussions).

@@ -123,7 +123,7 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::SummonButtons));
-    if (ImGui::BeginTable("summon-buttons", 2, ImGuiTableFlags_SizingStretchSame)) {
+    if (ImGui::BeginTable("summon-buttons", 3, ImGuiTableFlags_SizingStretchSame)) {
         for (std::size_t index = 0; index < keyboard::kControllerButtons.size(); ++index) {
             const keyboard::ControllerButton button = keyboard::kControllerButtons[index];
             const auto found = std::find(edited.summonButtons.begin(), edited.summonButtons.end(), button);

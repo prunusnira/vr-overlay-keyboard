@@ -34,11 +34,6 @@ KeyboardApplication::KeyboardApplication(OverlayControlPort &overlay,
     }
 }
 
-void KeyboardApplication::setStateChangedCallback(StateChangedCallback callback) {
-    m_stateChangedCallback = std::move(callback);
-    publish();
-}
-
 const AppUiState &KeyboardApplication::state() const {
     return m_state;
 }
@@ -48,17 +43,14 @@ void KeyboardApplication::refresh() {
     m_state.overlayVisible = m_overlay.isVisible();
     m_state.inputLanguages = m_languages.loadedLanguages();
     m_state.imeMode = m_imeModes.currentMode();
-    publish();
 }
 
 void KeyboardApplication::setCandidates(const CandidateSnapshot &snapshot) {
     m_state.candidates = snapshot;
-    publish();
 }
 
 void KeyboardApplication::setComposition(const CompositionSnapshot &snapshot) {
     m_state.composition = snapshot;
-    publish();
 }
 
 void KeyboardApplication::updateControllerButtons(const std::vector<ControllerButtonState> &buttons) {
@@ -71,7 +63,6 @@ void KeyboardApplication::updateControllerButtons(const std::vector<ControllerBu
 
 void KeyboardApplication::setStatus(const std::string &message) {
     m_state.status = message;
-    publish();
 }
 
 bool KeyboardApplication::toggleOverlay() {
@@ -94,7 +85,6 @@ bool KeyboardApplication::showOverlay() {
 
     m_state.overlayVisible = true;
     m_state.status = "Keyboard overlay shown.";
-    publish();
     return true;
 }
 
@@ -112,13 +102,11 @@ bool KeyboardApplication::hideOverlay() {
 
     m_state.overlayVisible = false;
     m_state.status = "Keyboard overlay hidden.";
-    publish();
     return true;
 }
 
 bool KeyboardApplication::setOptionsOpen(bool open) {
     m_state.optionsOpen = open;
-    publish();
     return true;
 }
 
@@ -137,7 +125,6 @@ bool KeyboardApplication::applySettings(const AppSettings &settings) {
     // 조합 중 옵션을 바꿔도 이미 눌린 상태로 새 설정이 즉시 발화하지 않게 해제 입력을 기다린다.
     m_summonTrigger.reset(true);
     m_state.status = "Settings saved.";
-    publish();
     return true;
 }
 
@@ -198,7 +185,6 @@ bool KeyboardApplication::selectCandidate(std::uint32_t index) {
         return false;
     }
     m_state.status = "Candidate selection requested.";
-    publish();
     return true;
 }
 
@@ -209,20 +195,12 @@ bool KeyboardApplication::submitChatboxText(const std::string &utf8Text) {
         return false;
     }
     m_state.status = "Text sent to the VRChat Chatbox input field.";
-    publish();
     return true;
 }
 
-void KeyboardApplication::publish() {
-    if (m_stateChangedCallback) {
-        m_stateChangedCallback(m_state);
-    }
-}
-
 void KeyboardApplication::setFailure(const std::string &message) {
-    // 실패 문구를 한 상태 경로로 게시해 UI와 진단 로그가 같은 결과를 보게 한다.
+    // 실패 문구를 상태에 기록해 UI와 진단 로그가 같은 결과를 보게 한다.
     m_state.status = message.empty() ? "The requested action failed." : message;
-    publish();
 }
 
 } // namespace keyboard

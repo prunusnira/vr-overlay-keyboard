@@ -155,7 +155,7 @@ bool WindowsSettingsStore::load(keyboard::AppSettings *settings, std::string *er
         return false;
     }
     if (!exists) {
-        // 첫 실행은 계약에 정의한 한국어·오른쪽 Grip+B·0초 기본값을 사용한다.
+        // 첫 실행은 계약에 정의한 한국어·양쪽 Grip·0초 기본값을 사용한다.
         return true;
     }
 

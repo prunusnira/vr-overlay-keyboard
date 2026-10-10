@@ -220,11 +220,17 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
                       IM_COL32(237, 244, 247, 255), localized(language, keyboard::ui_text::TextId::WindowTitle));
     drawList->AddText(ImGui::GetFont(), 10.0f, ImVec2(header.x + 43.0f, header.y + 23.0f),
                       IM_COL32(101, 119, 132, 255), "CHATBOX INPUT  /  STEAMVR");
+    constexpr const char *version = "v" VR_OVERLAY_KEYBOARD_VERSION;
     constexpr const char *copyright = "(c) Studio Nira 2026";
+    const float versionWidth = ImGui::CalcTextSize(version).x * 10.0f / kFontSize;
     const float copyrightWidth = ImGui::CalcTextSize(copyright).x * 10.0f / kFontSize;
+    const float headerRight = ImGui::GetWindowPos().x + ImGui::GetWindowWidth() -
+        ImGui::GetStyle().WindowPadding.x;
     drawList->AddText(ImGui::GetFont(), 10.0f,
-        ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() -
-               ImGui::GetStyle().WindowPadding.x - copyrightWidth, header.y + 12.0f),
+        ImVec2(headerRight - copyrightWidth - 8.0f - versionWidth, header.y + 12.0f),
+        IM_COL32(113, 131, 143, 255), version);
+    drawList->AddText(ImGui::GetFont(), 10.0f,
+        ImVec2(headerRight - copyrightWidth, header.y + 12.0f),
         IM_COL32(113, 131, 143, 255), copyright);
     ImGui::SetCursorScreenPos(ImVec2(header.x, header.y + 38.0f));
     ImGui::Dummy(ImVec2(0.0f, 2.0f));

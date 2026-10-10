@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(vr-overlay-keyboard LANGUAGES CXX)
+project(vr-overlay-keyboard VERSION 1.0.0 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "The application uses Windows IME, TSF, and OpenVR Windows SDK libraries.")
@@ -82,7 +82,11 @@ add_library(keyboard_ui STATIC
     src/ui/imgui_input_session.h
 )
 target_link_libraries(keyboard_ui PUBLIC app_core dear_imgui)
-target_compile_definitions(keyboard_ui PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_definitions(keyboard_ui PRIVATE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+    VR_OVERLAY_KEYBOARD_VERSION="${PROJECT_VERSION}"
+)
 if(MSVC)
     target_compile_options(keyboard_ui PRIVATE /utf-8)
 endif()

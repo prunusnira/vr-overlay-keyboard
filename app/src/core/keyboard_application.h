@@ -7,8 +7,6 @@ namespace keyboard {
 
 class KeyboardApplication final : public KeyboardActions {
 public:
-    using StateChangedCallback = std::function<void(const AppUiState &)>;
-
     KeyboardApplication(OverlayControlPort &overlay,
                         InputLanguagePort &languages,
                         ImeModePort &imeModes,
@@ -17,7 +15,6 @@ public:
                         ChatboxPort &chatbox,
                         SettingsPort &settings);
 
-    void setStateChangedCallback(StateChangedCallback callback);
     const AppUiState &state() const;
     void refresh();
     void setCandidates(const CandidateSnapshot &snapshot);
@@ -37,7 +34,6 @@ public:
     bool submitChatboxText(const std::string &utf8Text) override;
 
 private:
-    void publish();
     void setFailure(const std::string &message);
 
     OverlayControlPort &m_overlay;
@@ -49,7 +45,6 @@ private:
     SettingsPort &m_settings;
     ControllerSummonTrigger m_summonTrigger;
     AppUiState m_state;
-    StateChangedCallback m_stateChangedCallback;
 };
 
 } // namespace keyboard

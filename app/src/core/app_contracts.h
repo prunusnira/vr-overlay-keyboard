@@ -119,8 +119,8 @@ struct AppSettings {
     float pointerOffsetXPercent = 0.0f;
     float pointerOffsetYPercent = 2.4f;
     std::vector<ControllerButton> summonButtons = {
+        ControllerButton::LeftGrip,
         ControllerButton::RightGrip,
-        ControllerButton::RightB,
     };
     std::uint32_t summonHoldMilliseconds = 0;
 };
