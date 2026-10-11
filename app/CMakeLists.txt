@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(vr-overlay-keyboard VERSION 1.0.0 LANGUAGES CXX)
+project(vr-overlay-keyboard VERSION 1.0.1 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "The application uses Windows IME, TSF, and OpenVR Windows SDK libraries.")
@@ -176,6 +176,7 @@ target_link_libraries(vr-overlay-keyboard PRIVATE
     windows_tsf_input
     chatbox_osc
     ole32
+    winmm
 )
 
 set(STEAMVR_RESOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/steamvr")

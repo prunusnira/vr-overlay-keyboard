@@ -275,20 +275,16 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 7.0f));
         ImGui::BeginChild("chatbox-card", ImVec2(0.0f, 132.0f), ImGuiChildFlags_Borders);
         ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::ChatboxText));
-        ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - 154.0f);
-        if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::FillChatbox),
-                                  ImVec2(154.0f, 30.0f))) {
-            resetHangulComposition();
-            if (state.composition.active) {
-                // 변환 중이면 Enter를 IME에 보내고, 조합 종료와 편집 버퍼 반영 뒤에 전송한다.
-                m_submitAfterComposition = m_applicationIsForeground && m_editorFocusArmed &&
-                    m_actions.sendKey(keyboard::KeyCode::Enter, false);
-                if (!m_submitAfterComposition) {
-                    appendLog("Finish the active IME composition in this app before filling Chatbox.");
-                }
-            } else if (m_actions.submitChatboxText(m_text)) {
-                appendLog("OSC request sent to 127.0.0.1:9000: /chatbox/input (send=false).");
-            }
+        constexpr float kChatButtonWidth = 100.0f;
+        ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - kChatButtonWidth);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.52f, 0.24f, 0.12f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.68f, 0.32f, 0.14f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.40f, 0.18f, 0.10f, 1.0f));
+        const bool sendChatbox = m_inputSession.button(
+            localized(language, keyboard::ui_text::TextId::Chat), ImVec2(kChatButtonWidth, 30.0f));
+        ImGui::PopStyleColor(3);
+        if (sendChatbox) {
+            requestChatboxSend(state.composition);
         }
         const ImGuiInputSession::EditorInteraction editor = m_inputSession.drawEditor(
             "##chatbox-text", m_text, ImVec2(-FLT_MIN, 78.0f),
@@ -301,7 +297,8 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         if (m_submitAfterComposition && !state.composition.active && editor.active) {
             m_submitAfterComposition = false;
             if (m_actions.submitChatboxText(m_text)) {
-                appendLog("OSC request sent to 127.0.0.1:9000: /chatbox/input (send=false).");
+                clearSentChatboxText();
+                appendLog("OSC request sent to 127.0.0.1:9000: /chatbox/input (send=true, immediate).");
             }
         }
         ImGui::EndChild();
@@ -732,6 +729,33 @@ void KeyboardUi::resetKanaComposition() {
     m_kanaRangeActive = false;
     m_kanaRangeStart = -1;
     m_kanaRangeEnd = -1;
+}
+
+void KeyboardUi::requestChatboxSend(const keyboard::CompositionSnapshot &composition) {
+    resetHangulComposition();
+    resetKanaComposition();
+    if (composition.active) {
+        // Confirm the active IME composition before sending its final text.
+        m_submitAfterComposition = m_applicationIsForeground && m_editorFocusArmed &&
+            m_actions.sendKey(keyboard::KeyCode::Enter, false);
+        if (!m_submitAfterComposition) {
+            appendLog("Finish the active IME composition in this app before sending Chatbox text.");
+        }
+        return;
+    }
+
+    if (m_actions.submitChatboxText(m_text)) {
+        clearSentChatboxText();
+        appendLog("OSC request sent to 127.0.0.1:9000: /chatbox/input (send=true, immediate).");
+    }
+}
+
+void KeyboardUi::clearSentChatboxText() {
+    resetHangulComposition();
+    resetKanaComposition();
+    m_pendingHangulInput.clear();
+    m_pendingKanaInput.clear();
+    m_inputSession.clearEditor(m_text);
 }
 
 void KeyboardUi::appendLog(std::string message) {

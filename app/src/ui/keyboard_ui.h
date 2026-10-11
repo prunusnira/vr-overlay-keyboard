@@ -62,6 +62,8 @@ private:
     void processKanaInput();
     bool applyKanaEdit(const keyboard::KanaComposer::Edit &edit);
     void resetKanaComposition();
+    void requestChatboxSend(const keyboard::CompositionSnapshot &composition);
+    void clearSentChatboxText();
     void appendLog(std::string message);
     void drawInputLanguages(const keyboard::AppUiState &state, keyboard::UiLanguage uiLanguage);
     void drawMissingInputLanguagePopup(keyboard::UiLanguage uiLanguage);

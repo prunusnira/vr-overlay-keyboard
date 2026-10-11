@@ -73,7 +73,8 @@ bool countUtf8CodePoints(const std::string &text, std::size_t *count) {
 }
 }
 
-bool OscClient::sendChatboxText(const std::string &utf8Text, std::string *error) const {
+bool OscClient::sendChatboxText(const std::string &utf8Text,
+                                std::string *error) const {
     if (utf8Text.find('\0') != std::string::npos) {
         if (error) {
             *error = "Chatbox text cannot contain a null character.";
@@ -97,8 +98,8 @@ bool OscClient::sendChatboxText(const std::string &utf8Text, std::string *error)
 
     std::string packet;
     appendOscString(packet, "/chatbox/input");
-    // 인수는 문자열, send=false, notifications=false로 VRChat 입력란만 채운다.
-    appendOscString(packet, ",sFF");
+    // 전송 모드는 즉시 보내기(send=true)로 고정하고 알림음은 끈다.
+    appendOscString(packet, ",sTF");
     appendOscString(packet, utf8Text);
 
     WSADATA data{};

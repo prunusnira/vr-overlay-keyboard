@@ -262,7 +262,8 @@ public:
 class ChatboxPort {
 public:
     virtual ~ChatboxPort() = default;
-    virtual bool sendChatboxText(const std::string &utf8Text, std::string *error) const = 0;
+    virtual bool sendChatboxText(const std::string &utf8Text,
+                                 std::string *error) const = 0;
 };
 
 class SettingsPort {

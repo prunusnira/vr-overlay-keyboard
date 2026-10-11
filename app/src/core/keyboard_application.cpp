@@ -194,7 +194,7 @@ bool KeyboardApplication::submitChatboxText(const std::string &utf8Text) {
         setFailure(error);
         return false;
     }
-    m_state.status = "Text sent to the VRChat Chatbox input field.";
+    m_state.status = "Immediate VRChat Chatbox send requested.";
     return true;
 }
 

@@ -26,6 +26,7 @@ constexpr int kWglContextMajorVersion = 0x2091;
 constexpr int kWglContextMinorVersion = 0x2092;
 
 using CreateContextAttribs = HGLRC(WINAPI *)(HDC, HGLRC, const int *);
+using SwapIntervalExt = BOOL(WINAPI *)(int);
 
 void setPixelFormatDescription(PIXELFORMATDESCRIPTOR *description) {
     if (!description) {
@@ -369,6 +370,15 @@ bool ImGuiHost::createOpenGlContext(std::string *error) {
         }
         setError(error, "Creating an OpenGL 3.0 context");
         return false;
+    }
+    // 입력 갱신을 모니터 주사율에 묶지 않고 8ms 주기로 돌린다. 확장이 없으면 드라이버 기본값을 유지한다.
+    const PROC swapIntervalAddress = wglGetProcAddress("wglSwapIntervalEXT");
+    if (swapIntervalAddress &&
+        swapIntervalAddress != reinterpret_cast<PROC>(1) &&
+        swapIntervalAddress != reinterpret_cast<PROC>(2) &&
+        swapIntervalAddress != reinterpret_cast<PROC>(3) &&
+        swapIntervalAddress != reinterpret_cast<PROC>(-1)) {
+        reinterpret_cast<SwapIntervalExt>(swapIntervalAddress)(0);
     }
     return true;
 }

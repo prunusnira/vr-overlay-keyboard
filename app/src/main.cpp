@@ -10,15 +10,18 @@
 #include "ui/keyboard_ui.h"
 
 #include <Windows.h>
+#include <mmsystem.h>
 #include <objbase.h>
 
+#include <chrono>
 #include <filesystem>
 #include <string>
 #include <vector>
 
 namespace {
-constexpr ULONGLONG kTargetFrameIntervalMs = 16;
-constexpr ULONGLONG kOverlayTextureIntervalMs = 16;
+constexpr auto kTargetFrameInterval = std::chrono::milliseconds(8);
+constexpr auto kOverlayTextureInterval = std::chrono::milliseconds(8);
+constexpr auto kLanguageRefreshInterval = std::chrono::milliseconds(250);
 
 std::wstring executablePath() {
     std::wstring buffer(32768, L'\0');
@@ -83,6 +86,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         }
         return 1;
     }
+    // 8ms 입력 갱신 주기를 Windows 기본 타이머 정밀도로 늦추지 않도록 1ms 해상도를 요청한다.
+    const bool highResolutionTimerEnabled = timeBeginPeriod(1) == TIMERR_NOERROR;
 
     // 앱 기능은 계약에 의존하고, 이 진입점에서 Windows·OpenVR·OSC 구현을 연결한다.
     WindowsInputLanguageService languageService;
@@ -178,16 +183,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         keyboardApplication.setStatus(mouseRoutingError);
     }
 
-    ULONGLONG lastTextureUpdate = 0;
-    ULONGLONG lastLanguageRefresh = 0;
+    auto lastTextureUpdate = std::chrono::steady_clock::time_point{};
+    auto lastLanguageRefresh = std::chrono::steady_clock::time_point{};
     bool actionPollErrorReported = false;
     bool textureErrorReported = false;
     bool applicationIsForeground = virtualKeySender.isCurrentProcessForeground();
 
     while (host.processMessages()) {
-        const ULONGLONG now = GetTickCount64();
-        // 입력 언어 목록은 짧은 주기로 갱신해 매 프레임 열거하지 않는다.
-        if (now - lastLanguageRefresh >= 250) {
+        const auto now = std::chrono::steady_clock::now();
+        // SteamVR 포인터 입력과 ImGui 버튼 처리를 매 8ms마다 확인한다. 언어 목록은 별도 주기로 갱신한다.
+        if (now - lastLanguageRefresh >= kLanguageRefreshInterval) {
             lastLanguageRefresh = now;
             keyboardApplication.refresh();
         }
@@ -206,9 +211,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         // 후보 선택/조합 취소 콜백이 그리는 도중 상태를 갱신해도 현재 화면의 문자열·후보 반복은 안정적으로 유지한다.
         const keyboard::AppUiState uiState = keyboardApplication.state();
         keyboardUi.draw(uiState, applicationIsForeground);
-        // OpenGL 픽셀 readback은 오버레이가 표시될 때 초당 최대 약 60회 수행한다.
+        // 오버레이 텍스처도 약 125Hz로 갱신해 입력 후 HMD 표시까지의 대기를 줄인다.
         const bool updateOverlayTexture =
-            overlayReady && overlay.isVisible() && now - lastTextureUpdate >= kOverlayTextureIntervalMs;
+            overlayReady && overlay.isVisible() && now - lastTextureUpdate >= kOverlayTextureInterval;
         keyboard::ImageFrame frame = host.renderFrame(updateOverlayTexture);
         if (updateOverlayTexture) {
             lastTextureUpdate = now;
@@ -219,10 +224,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                 textureErrorReported = true;
             }
         }
-        // SwapBuffers가 이미 수직 동기화로 기다린 경우 추가 대기를 피하면서 목표 프레임 간격을 지킨다.
-        const ULONGLONG elapsed = GetTickCount64() - now;
-        if (elapsed < kTargetFrameIntervalMs) {
-            Sleep(static_cast<DWORD>(kTargetFrameIntervalMs - elapsed));
+        // 렌더링·OSC 입력 처리가 8ms보다 빨랐을 때만 남은 시간만 쉰다.
+        const auto elapsed = std::chrono::steady_clock::now() - now;
+        if (elapsed < kTargetFrameInterval) {
+            const auto remainingMilliseconds =
+                std::chrono::duration_cast<std::chrono::milliseconds>(kTargetFrameInterval - elapsed).count();
+            if (remainingMilliseconds > 0) {
+                Sleep(static_cast<DWORD>(remainingMilliseconds));
+            }
         }
     }
 
@@ -234,6 +243,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     host.shutdown();
     if (shouldUninitializeCom) {
         CoUninitialize();
+    }
+    if (highResolutionTimerEnabled) {
+        timeEndPeriod(1);
     }
     return 0;
 }

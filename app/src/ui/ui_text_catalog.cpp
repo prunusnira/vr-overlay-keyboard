@@ -21,7 +21,7 @@ constexpr std::array<TextTriple, static_cast<std::size_t>(TextId::Count)> kTexts
     {"오버레이 표시", "オーバーレイを表示", "Show keyboard overlay"},
     {"오버레이 숨기기", "オーバーレイを非表示", "Hide keyboard overlay"},
     {"입력 지우기", "入力を消去", "Clear input"},
-    {"VRChat Chatbox 채우기", "VRChat Chatbox に入力", "Fill VRChat Chatbox"},
+    {"채팅", "チャット", "Chat"},
     {"옵션", "オプション", "Options"},
     {"상태", "状態", "Status"},
     {"Windows 전경", "Windows 前景", "Windows foreground"},

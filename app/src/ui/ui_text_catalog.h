@@ -12,7 +12,7 @@ enum class TextId {
     ShowOverlay,
     HideOverlay,
     ClearInput,
-    FillChatbox,
+    Chat,
     OpenOptions,
     Status,
     WindowsForeground,

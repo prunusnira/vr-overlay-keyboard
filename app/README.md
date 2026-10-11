@@ -53,7 +53,7 @@ The text field receives focus automatically when this app starts in the foregrou
 
 The IME candidate panel reserves a fixed-height row so candidate updates do not move the keyboard. Candidates scroll horizontally when they exceed the panel width.
 
-**Fill VRChat Chatbox** sends OSC `/chatbox/input` to `127.0.0.1:9000` with `send=false` and notifications disabled. Enable OSC in VRChat. A successful local UDP send only means Windows accepted the datagram; confirm that the text appears in VRChat. The 144 Unicode code-point and embedded-null checks are applied before sending. Non-ASCII round trips require separate verification.
+The **Chat** button sends OSC `/chatbox/input` to `127.0.0.1:9000` with `send=true` and notifications disabled. Enable OSC in VRChat. A successful local UDP send means Windows accepted the datagram; confirm that the text appears in VRChat. The message uses UTF-8 and is limited to 144 Unicode code points, with embedded-null checks.
 
 ## Input regression checks
 

@@ -29,7 +29,7 @@ Download it from the [GitHub Releases page](https://github.com/prunusnira/vr-ove
 2. Press both **Grip buttons** at the same time to summon the keyboard.
    - This is the default. You can change the summon combination in **Options**.
 3. Point a controller at the overlay, select the text field, choose English, Korean, or Japanese, and enter text with the virtual keys.
-4. Enable OSC in VRChat, then select **Fill VRChat Chatbox** to send the text.
+4. Enable OSC in VRChat, then select **Chat** to send the text immediately.
 5. To move the overlay, point at it and hold **Grip** while moving your controller. While holding Grip, use that controller's thumbstick to adjust the overlay size and distance.
 
 When the app does not have Windows keyboard focus, Japanese input is composed as Hiragana and Kanji conversion is unavailable. To use Kanji conversion, give the app keyboard window Windows focus with **Focus input**.
