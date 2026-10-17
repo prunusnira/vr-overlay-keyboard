@@ -100,10 +100,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         overlay, languageService, tsfInput, virtualKeySender, tsfInput, chatboxSender, settingsStore);
     KeyboardUi keyboardUi(keyboardApplication);
 
-    keyboardUi.setFocusRequestCallback([&host, &virtualKeySender](std::string *error) {
-        return virtualKeySender.requestForeground(
-            reinterpret_cast<std::uintptr_t>(host.windowHandle()), error);
-    });
     tsfInput.setCandidateCallback([&keyboardApplication](const keyboard::CandidateSnapshot &snapshot) {
         keyboardApplication.setCandidates(snapshot);
     });

@@ -13,16 +13,12 @@
 
 class KeyboardUi final {
 public:
-    // Windows foreground 전환은 HWND를 아는 조립 지점에 위임한다.
-    using FocusRequestCallback = std::function<bool(std::string *)>;
-
     explicit KeyboardUi(keyboard::KeyboardActions &actions);
 
     void draw(const keyboard::AppUiState &state, bool applicationIsForeground);
     // OpenVR/Windows 어댑터의 공용 픽셀 좌표 이벤트를 ImGui 입력 큐로 넘긴다.
     void dispatchPointerEvent(const keyboard::PointerEvent &event);
     bool isVirtualControlAt(int x, int y) const;
-    void setFocusRequestCallback(FocusRequestCallback callback);
     void setCompositionCancelCallback(std::function<void()> callback);
 
 private:
@@ -78,7 +74,6 @@ private:
     keyboard::HangulComposer m_hangulComposer;
     keyboard::KanaComposer m_kanaComposer;
     SettingsUi m_settingsUi;
-    FocusRequestCallback m_focusRequestCallback;
     std::function<void()> m_compositionCancelCallback;
     std::string m_text;
     std::string m_candidateSignature;

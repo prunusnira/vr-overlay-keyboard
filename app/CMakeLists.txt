@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(vr-overlay-keyboard VERSION 1.0.1 LANGUAGES CXX)
+project(vr-overlay-keyboard VERSION 1.0.2 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "The application uses Windows IME, TSF, and OpenVR Windows SDK libraries.")

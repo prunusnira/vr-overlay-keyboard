@@ -113,28 +113,3 @@ bool WindowsVirtualKeySender::isCurrentProcessForeground() const {
     }
     return foregroundProcessId == GetCurrentProcessId();
 }
-
-bool WindowsVirtualKeySender::requestForeground(std::uintptr_t nativeWindowHandle, std::string *error) const {
-    const HWND window = reinterpret_cast<HWND>(nativeWindowHandle);
-    if (!window || !IsWindow(window)) {
-        if (error) {
-            *error = "The keyboard window handle is not valid.";
-        }
-        return false;
-    }
-
-    // 이미 활성인 창에 같은 포커스를 다시 지정하지 않아 진행 중인 IME 세션을 건드리지 않는다.
-    if (GetForegroundWindow() != window) {
-        SetForegroundWindow(window);
-    }
-    if (GetForegroundWindow() == window && GetFocus() != window) {
-        SetFocus(window);
-    }
-    if (GetForegroundWindow() != window) {
-        if (error) {
-            *error = "Windows did not grant foreground focus to this application.";
-        }
-        return false;
-    }
-    return true;
-}
