@@ -7,17 +7,20 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <filesystem>
 #include <iterator>
 #include <sstream>
 #include <utility>
 
 namespace {
-constexpr float kFontSize = 14.0f;
+constexpr float kFontSize = 16.0f;
 constexpr float kKeyHeight = 41.0f;
 constexpr float kBottomRowHeight = 43.0f;
 constexpr float kKeyWidth = 54.0f;
-constexpr float kImePreviewHeight = 80.0f;
+constexpr float kImePreviewHeight = 96.0f;
+constexpr float kOptionsButtonWidth = 54.0f;
+constexpr float kDiagnosticsButtonWidth = 156.0f;
 
 std::string candidateSignature(const keyboard::CandidateSnapshot &snapshot) {
     std::ostringstream signature;
@@ -109,17 +112,47 @@ void drawKeyLegend(const keyboard::KeyboardKeyDefinition &key,
     ImDrawList *drawList = ImGui::GetWindowDrawList();
     if (secondary && *secondary) {
         const ImVec2 secondarySize = ImGui::CalcTextSize(secondary);
-        constexpr float kSecondarySize = 9.0f;
+        constexpr float kSecondarySize = 11.0f;
         const float scaledWidth = secondarySize.x * kSecondarySize / kFontSize;
         drawList->AddText(ImGui::GetFont(), kSecondarySize,
                           ImVec2(maximum.x - scaledWidth - 5.0f, minimum.y + 3.0f),
                           IM_COL32(123, 202, 183, 255), secondary);
     }
-    const ImVec2 labelSize = ImGui::GetFont()->CalcTextSizeA(15.0f, FLT_MAX, 0.0f, primary);
+    const ImVec2 labelSize = ImGui::GetFont()->CalcTextSizeA(17.0f, FLT_MAX, 0.0f, primary);
     const ImVec2 labelPosition((minimum.x + maximum.x - labelSize.x) * 0.5f,
                                (minimum.y + maximum.y - labelSize.y) * 0.5f + 2.0f);
-    drawList->AddText(ImGui::GetFont(), 15.0f, labelPosition,
+    drawList->AddText(ImGui::GetFont(), 17.0f, labelPosition,
                       ImGui::GetColorU32(ImGuiCol_Text), primary);
+}
+
+void drawSettingsIcon(const ImVec2 &minimum, const ImVec2 &maximum) {
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
+    const ImVec2 center((minimum.x + maximum.x) * 0.5f, (minimum.y + maximum.y) * 0.5f);
+    constexpr int kToothCount = 8;
+    constexpr float kTwoPi = 6.28318530718f;
+    constexpr float kRootRadius = 7.2f;
+    constexpr float kTipRadius = 10.5f;
+    constexpr float kToothHalfAngle = 0.19f;
+    constexpr float kToothRootAngle = 0.32f;
+    const ImU32 iconColor = ImGui::GetColorU32(ImGuiCol_Text);
+
+    drawList->PathClear();
+    for (int tooth = 0; tooth < kToothCount; ++tooth) {
+        const float toothCenter = kTwoPi * static_cast<float>(tooth) / kToothCount;
+        const float angles[] = {
+            toothCenter - kToothRootAngle,
+            toothCenter - kToothHalfAngle,
+            toothCenter + kToothHalfAngle,
+            toothCenter + kToothRootAngle,
+        };
+        const float radii[] = {kRootRadius, kTipRadius, kTipRadius, kRootRadius};
+        for (int point = 0; point < 4; ++point) {
+            drawList->PathLineTo(ImVec2(center.x + std::cos(angles[point]) * radii[point],
+                                        center.y + std::sin(angles[point]) * radii[point]));
+        }
+    }
+    drawList->PathStroke(iconColor, 2.4f, ImDrawFlags_Closed);
+    drawList->AddCircle(center, 4.0f, iconColor, 24, 2.4f);
 }
 
 std::string directVirtualCharacter(const keyboard::KeyboardKeyDefinition &key,
@@ -231,37 +264,51 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         IM_COL32(13, 20, 28, 255), IM_COL32(17, 25, 34, 255));
     drawList->AddRectFilled(header, ImVec2(header.x + 32.0f, header.y + 32.0f),
                             IM_COL32(107, 218, 192, 255), 9.0f);
-    drawList->AddText(ImGui::GetFont(), 14.0f, ImVec2(header.x + 9.0f, header.y + 8.0f),
+    drawList->AddText(ImGui::GetFont(), 16.0f, ImVec2(header.x + 9.0f, header.y + 8.0f),
                       IM_COL32(8, 30, 25, 255), "N");
-    drawList->AddText(ImGui::GetFont(), 17.0f, ImVec2(header.x + 43.0f, header.y),
+    drawList->AddText(ImGui::GetFont(), 19.0f, ImVec2(header.x + 43.0f, header.y),
                       IM_COL32(237, 244, 247, 255), localized(language, keyboard::ui_text::TextId::WindowTitle));
-    drawList->AddText(ImGui::GetFont(), 10.0f, ImVec2(header.x + 43.0f, header.y + 23.0f),
-                      IM_COL32(101, 119, 132, 255), "CHATBOX INPUT  /  STEAMVR");
+    constexpr const char *headerDescription = "CHATBOX INPUT  /  STEAMVR";
+    drawList->AddText(ImGui::GetFont(), 12.0f, ImVec2(header.x + 43.0f, header.y + 23.0f),
+                      IM_COL32(101, 119, 132, 255), headerDescription);
     constexpr const char *version = "v" VR_OVERLAY_KEYBOARD_VERSION;
     constexpr const char *copyright = "(c) Studio Nira 2026";
-    const float versionWidth = ImGui::CalcTextSize(version).x * 10.0f / kFontSize;
-    const float copyrightWidth = ImGui::CalcTextSize(copyright).x * 10.0f / kFontSize;
+    const float versionWidth = ImGui::CalcTextSize(version).x * 12.0f / kFontSize;
+    const float copyrightWidth = ImGui::CalcTextSize(copyright).x * 12.0f / kFontSize;
     const float headerRight = ImGui::GetWindowPos().x + ImGui::GetWindowWidth() -
         ImGui::GetStyle().WindowPadding.x;
-    drawList->AddText(ImGui::GetFont(), 10.0f,
+    const float headerDescriptionWidth = ImGui::CalcTextSize(headerDescription).x * 12.0f / kFontSize;
+    const float overlayButtonX = header.x + 43.0f + headerDescriptionWidth + 12.0f;
+    const float versionGroupX = headerRight - copyrightWidth - 8.0f - versionWidth;
+    const char *overlayButtonLabel = localized(language, state.overlayVisible
+        ? keyboard::ui_text::TextId::HideOverlay
+        : keyboard::ui_text::TextId::ShowOverlay);
+    const float overlayButtonWidth = std::min(
+        ImGui::CalcTextSize(overlayButtonLabel).x + ImGui::GetStyle().FramePadding.x * 2.0f,
+        versionGroupX - overlayButtonX - 12.0f);
+    ImGui::SetCursorScreenPos(ImVec2(overlayButtonX, header.y + 16.0f));
+    if (m_inputSession.button(overlayButtonLabel, ImVec2(overlayButtonWidth, 26.0f))) {
+        state.overlayVisible ? m_actions.hideOverlay() : m_actions.showOverlay();
+    }
+    drawList->AddText(ImGui::GetFont(), 12.0f,
         ImVec2(headerRight - copyrightWidth - 8.0f - versionWidth, header.y + 12.0f),
         IM_COL32(113, 131, 143, 255), version);
-    drawList->AddText(ImGui::GetFont(), 10.0f,
+    drawList->AddText(ImGui::GetFont(), 12.0f,
         ImVec2(headerRight - copyrightWidth, header.y + 12.0f),
         IM_COL32(113, 131, 143, 255), copyright);
-    ImGui::SetCursorScreenPos(ImVec2(header.x, header.y + 38.0f));
+    ImGui::SetCursorScreenPos(ImVec2(header.x, header.y + 44.0f));
     ImGui::Dummy(ImVec2(0.0f, 2.0f));
 
     const keyboard::InputLanguage *activeLanguage = activeInputLanguage(state);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 4.0f));
-    ImGui::BeginChild("status-strip", ImVec2(0.0f, 44.0f), ImGuiChildFlags_Borders);
+    ImGui::BeginChild("status-strip", ImVec2(0.0f, 78.0f), ImGuiChildFlags_Borders);
     const ImVec2 statusPosition = ImGui::GetCursorScreenPos();
     ImGui::GetWindowDrawList()->AddCircleFilled(
         ImVec2(statusPosition.x + 4.0f, statusPosition.y + 8.0f), 3.5f,
         IM_COL32(55, 195, 159, 255), 12);
     const std::string statusMessage = std::string(
         localized(language, keyboard::ui_text::TextId::Status)) + ": " + state.status;
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), 11.0f,
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), 13.0f,
         ImVec2(statusPosition.x + 13.0f, statusPosition.y - 1.0f),
         IM_COL32(197, 210, 216, 255), statusMessage.c_str());
     const std::string statusDetails = std::string(localized(language, keyboard::ui_text::TextId::WindowsForeground)) + ": " +
@@ -275,9 +322,17 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         localized(language, keyboard::ui_text::TextId::CurrentInputLanguage) + ": " +
         (activeLanguage ? activeLanguage->label
                         : localized(language, keyboard::ui_text::TextId::Detecting));
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), 10.0f,
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), 12.0f,
         ImVec2(statusPosition.x + 13.0f, statusPosition.y + 18.0f),
         IM_COL32(148, 166, 178, 255), statusDetails.c_str());
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), 12.0f,
+        ImVec2(statusPosition.x + 13.0f, statusPosition.y + 34.0f),
+        IM_COL32(244, 206, 105, 255),
+        localized(language, keyboard::ui_text::TextId::JapaneseKanjiForegroundHint));
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), 12.0f,
+        ImVec2(statusPosition.x + 13.0f, statusPosition.y + 50.0f),
+        IM_COL32(255, 255, 255, 255),
+        localized(language, keyboard::ui_text::TextId::ChatboxSendHint));
     ImGui::EndChild();
     ImGui::PopStyleVar();
 
@@ -293,7 +348,25 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         ImGui::BeginChild("chatbox-card", ImVec2(0.0f, 132.0f), ImGuiChildFlags_Borders);
         ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::ChatboxText));
         constexpr float kChatButtonWidth = 100.0f;
-        ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - kChatButtonWidth);
+        const char *resetButtonLabel = localized(language, keyboard::ui_text::TextId::ResetChatboxInput);
+        const float resetButtonWidth = ImGui::CalcTextSize(resetButtonLabel).x +
+            ImGui::GetStyle().FramePadding.x * 2.0f;
+        const float chatButtonX = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - kChatButtonWidth;
+        const float resetButtonX = chatButtonX - resetButtonWidth - 8.0f;
+        ImGui::SameLine(resetButtonX);
+        if (m_inputSession.button(resetButtonLabel, ImVec2(resetButtonWidth, 30.0f))) {
+            m_submitAfterComposition = false;
+            resetHangulComposition();
+            resetKanaComposition();
+            m_pendingHangulInput.clear();
+            m_pendingKanaInput.clear();
+            if (m_compositionCancelCallback) {
+                m_compositionCancelCallback();
+            }
+            m_inputSession.clearEditor(m_text);
+            appendLog("Editor cleared.");
+        }
+        ImGui::SameLine(chatButtonX);
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.52f, 0.24f, 0.12f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.68f, 0.32f, 0.14f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.40f, 0.18f, 0.10f, 1.0f));
@@ -322,7 +395,8 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         ImGui::PopStyleVar();
         ImGui::TableNextColumn();
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 7.0f));
-        ImGui::BeginChild("ime-card", ImVec2(0.0f, 132.0f), ImGuiChildFlags_Borders);
+        ImGui::BeginChild("ime-card", ImVec2(0.0f, 132.0f), ImGuiChildFlags_Borders,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         drawCandidates(state.candidates, state.composition, language);
         ImGui::EndChild();
         ImGui::PopStyleVar();
@@ -330,36 +404,7 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
     }
 
     ImGui::Spacing();
-    if (ImGui::BeginTable("keyboard-toolbar", 2,
-                          ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoPadOuterX)) {
-        ImGui::TableSetupColumn("keyboard-actions", ImGuiTableColumnFlags_WidthStretch, 0.56f);
-        ImGui::TableSetupColumn("keyboard-languages", ImGuiTableColumnFlags_WidthStretch, 0.44f);
-        ImGui::TableNextColumn();
-        const bool overlayVisible = state.overlayVisible;
-        const char *toggleLabel = localized(language, overlayVisible
-            ? keyboard::ui_text::TextId::HideOverlay
-            : keyboard::ui_text::TextId::ShowOverlay);
-        if (m_inputSession.button(toggleLabel, ImVec2(210.0f, 34.0f))) {
-            overlayVisible ? m_actions.hideOverlay() : m_actions.showOverlay();
-        }
-        ImGui::SameLine();
-        if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::ClearInput),
-                                  ImVec2(138.0f, 34.0f))) {
-            m_submitAfterComposition = false;
-            resetHangulComposition();
-            resetKanaComposition();
-            m_pendingHangulInput.clear();
-            m_pendingKanaInput.clear();
-            if (m_compositionCancelCallback) {
-                m_compositionCancelCallback();
-            }
-            m_inputSession.clearEditor(m_text);
-            appendLog("Editor cleared.");
-        }
-        ImGui::TableNextColumn();
-        drawInputLanguages(state, language);
-        ImGui::EndTable();
-    }
+    drawInputLanguages(state, language);
     drawKeyboard(state, language);
     if (m_diagnosticsExpanded) {
         ImGui::BeginChild("input-diagnostics", ImVec2(0.0f, 72.0f), ImGuiChildFlags_Borders,
@@ -767,9 +812,26 @@ void KeyboardUi::drawInputLanguages(const keyboard::AppUiState &state,
     if (languages.empty()) {
         ImGui::TextDisabled("%s", localized(uiLanguage, keyboard::ui_text::TextId::NoInputLanguages));
     }
-    if (!ImGui::BeginTable("input-languages", 3, ImGuiTableFlags_SizingStretchSame)) {
+    if (!ImGui::BeginChild("input-language-panel", ImVec2(0.0f, 56.0f), ImGuiChildFlags_Borders,
+                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        ImGui::EndChild();
         return;
     }
+    const char *title = localized(uiLanguage, keyboard::ui_text::TextId::InputLanguageChange);
+    const float contentStartX = ImGui::GetCursorPosX();
+    const float contentWidth = ImGui::GetContentRegionAvail().x;
+    const float titleWidth = ImGui::CalcTextSize(title).x;
+    constexpr float kTitleButtonSpacing = 12.0f;
+    constexpr float kButtonSpacing = 8.0f;
+    const float buttonWidth = std::min(112.0f, std::max(1.0f,
+        (contentWidth - titleWidth - kTitleButtonSpacing - kButtonSpacing * 2.0f) / 3.0f));
+    const float groupWidth = titleWidth + kTitleButtonSpacing + buttonWidth * 3.0f + kButtonSpacing * 2.0f;
+    const float groupStartX = contentStartX + std::max(0.0f, (contentWidth - groupWidth) * 0.5f);
+    const float buttonStartX = groupStartX + titleWidth + kTitleButtonSpacing;
+    ImGui::SetCursorPos(ImVec2(groupStartX,
+        (ImGui::GetWindowHeight() - ImGui::GetTextLineHeight()) * 0.5f));
+    ImGui::TextUnformatted(title);
+
     struct LanguageButton {
         keyboard::KeyboardLanguage language;
         keyboard::ui_text::TextId text;
@@ -779,8 +841,11 @@ void KeyboardUi::drawInputLanguages(const keyboard::AppUiState &state,
         {keyboard::KeyboardLanguage::Japanese, keyboard::ui_text::TextId::KeyboardLanguageJapanese},
         {keyboard::KeyboardLanguage::English, keyboard::ui_text::TextId::KeyboardLanguageEnglish},
     };
+    ImGui::SetCursorPos(ImVec2(buttonStartX, (ImGui::GetWindowHeight() - 34.0f) * 0.5f));
     for (std::size_t index = 0; index < std::size(buttons); ++index) {
-        ImGui::TableNextColumn();
+        if (index > 0) {
+            ImGui::SameLine(0.0f, kButtonSpacing);
+        }
         ImGui::PushID(static_cast<int>(index));
         const bool active = languageButtonIsActive(state, buttons[index].language);
         if (active) {
@@ -788,7 +853,7 @@ void KeyboardUi::drawInputLanguages(const keyboard::AppUiState &state,
             ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.18f, 0.39f, 0.35f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.20f, 0.45f, 0.39f, 1.0f));
         }
-        if (m_inputSession.button(localized(uiLanguage, buttons[index].text), ImVec2(-FLT_MIN, 34.0f), active)) {
+        if (m_inputSession.button(localized(uiLanguage, buttons[index].text), ImVec2(buttonWidth, 34.0f), active)) {
             resetHangulComposition();
             m_pendingHangulInput.clear();
             m_directHangulModeOverrideActive = false;
@@ -821,7 +886,7 @@ void KeyboardUi::drawInputLanguages(const keyboard::AppUiState &state,
         }
         ImGui::PopID();
     }
-    ImGui::EndTable();
+    ImGui::EndChild();
 }
 
 void KeyboardUi::drawMissingInputLanguagePopup(keyboard::UiLanguage uiLanguage) {
@@ -855,15 +920,11 @@ void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
     }
     ImGui::TextUnformatted(localized(uiLanguage, keyboard::ui_text::TextId::ImePreviewCandidates));
     // 후보가 나타나거나 사라져도 키보드 위치가 바뀌지 않도록 고정 높이를 항상 확보한다.
-    if (m_candidateScrollRequested) {
-        ImGui::SetNextWindowScroll(ImVec2(m_candidateScrollX, 0.0f));
-        m_candidateScrollRequested = false;
-    }
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 4.0f));
     ImGui::BeginChild("ime-candidates",
                       ImVec2(0.0f, kImePreviewHeight),
                       ImGuiChildFlags_Borders,
-                      ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollbar);
+                      ImGuiWindowFlags_NoScrollbar);
     ImGui::PopStyleVar();
     if (composition.active) {
         // 일본어 단어를 변환하는 동안의 문자열은 고정 영역에 표시하고 확정 편집 문자열과 섞지 않는다.
@@ -876,30 +937,32 @@ void KeyboardUi::drawCandidates(const keyboard::CandidateSnapshot &snapshot,
     if (!snapshot.active || snapshot.candidates.empty()) {
         ImGui::TextDisabled("%s", localized(uiLanguage, keyboard::ui_text::TextId::ImeCandidatesAppear));
     }
-    // 후보는 한 줄로 두고, 별도 가로 스크롤바가 편집창 포커스를 보존하며 위치만 바꾼다.
+    // 후보가 변환 영역 너비를 넘으면 다음 줄에 배치하고 스크롤바는 표시하지 않는다.
     const std::size_t candidateCount = snapshot.active ? snapshot.candidates.size() : 0;
+    const float candidateAvailableWidth = ImGui::GetContentRegionAvail().x;
+    const float candidateSpacing = ImGui::GetStyle().ItemSpacing.x;
+    float candidateRowWidth = 0.0f;
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.18f, 0.21f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.18f, 0.25f, 0.27f, 1.0f));
     for (std::size_t index = 0; index < candidateCount; ++index) {
         ImGui::PushID(static_cast<int>(index));
         const bool selected = index == snapshot.selectedIndex;
         const std::string &candidate = snapshot.candidates[index];
-        const float candidateWidth = std::max(80.0f, ImGui::CalcTextSize(candidate.c_str()).x + 28.0f);
+        const float candidateWidth = std::min(candidateAvailableWidth,
+            std::max(80.0f, ImGui::CalcTextSize(candidate.c_str()).x + 28.0f));
+        if (index > 0 && candidateRowWidth + candidateSpacing + candidateWidth <= candidateAvailableWidth) {
+            ImGui::SameLine(0.0f, candidateSpacing);
+            candidateRowWidth += candidateSpacing + candidateWidth;
+        } else {
+            candidateRowWidth = candidateWidth;
+        }
         if (m_inputSession.button(candidate.c_str(), ImVec2(candidateWidth, 32.0f), selected)) {
             m_actions.selectCandidate(static_cast<std::uint32_t>(index));
         }
         ImGui::PopID();
-        if (index + 1 < candidateCount) {
-            ImGui::SameLine();
-        }
     }
     ImGui::PopStyleColor(2);
-    const float maxScroll = ImGui::GetScrollMaxX();
-    const float visibleWidth = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x * 2.0f;
-    m_candidateScrollX = ImGui::GetScrollX();
     ImGui::EndChild();
-    m_candidateScrollRequested = m_inputSession.horizontalScrollbar(
-        "##candidate-scroll", ImVec2(-FLT_MIN, 12.0f), maxScroll, visibleWidth, m_candidateScrollX);
 }
 
 void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLanguage uiLanguage) {
@@ -990,7 +1053,7 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
                 }
             }
         }
-        metrics.controlWidth = bottomRow ? 116.0f + 156.0f : 0.0f;
+        metrics.controlWidth = bottomRow ? kOptionsButtonWidth + kDiagnosticsButtonWidth : 0.0f;
         if (rowDefinition.firstCharacterOffsetUnits &&
             *rowDefinition.firstCharacterOffsetUnits == 0.0f) {
             qwertyRowWidthUnits = metrics.keyWidthUnits;
@@ -1049,12 +1112,16 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
         const keyboard::KeyboardRow &row = rowDefinition.keys;
         const bool bottomRow = rowIndex + 1 == rows.size();
         const float keyHeight = bottomRow ? kBottomRowHeight : kKeyHeight;
-        const float optionsWidth = bottomRow ? 116.0f : 0.0f;
-        const float diagnosticsWidth = bottomRow ? 156.0f : 0.0f;
+        const float optionsWidth = bottomRow ? kOptionsButtonWidth : 0.0f;
+        const float diagnosticsWidth = bottomRow ? kDiagnosticsButtonWidth : 0.0f;
         ImGui::SetCursorPosX(keyboardOriginX + rowStartOffsets[rowIndex]);
         if (bottomRow) {
-            if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::OpenOptions),
-                                      ImVec2(optionsWidth, keyHeight))) {
+            const bool openOptions = m_inputSession.button("##open-options", ImVec2(optionsWidth, keyHeight));
+            drawSettingsIcon(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s", localized(uiLanguage, keyboard::ui_text::TextId::OpenOptions));
+            }
+            if (openOptions) {
                 m_actions.setOptionsOpen(true);
             }
             ImGui::SameLine(0.0f, kKeyboardButtonSpacing);

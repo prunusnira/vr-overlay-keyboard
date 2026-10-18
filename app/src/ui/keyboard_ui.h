@@ -102,7 +102,5 @@ private:
     int m_pointerCursorX = -1;
     int m_pointerCursorY = -1;
     std::array<ControllerCursor, 2> m_controllerCursors{};
-    float m_candidateScrollX = 0.0f;
-    bool m_candidateScrollRequested = false;
     bool m_submitAfterComposition = false;
 };

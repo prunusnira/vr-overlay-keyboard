@@ -48,20 +48,24 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
         IM_COL32(13, 20, 28, 255), IM_COL32(17, 25, 34, 255));
     drawList->AddRectFilled(headerPosition,
         ImVec2(headerPosition.x + 34.0f, headerPosition.y + 34.0f), IM_COL32(107, 218, 192, 255), 9.0f);
-    drawList->AddText(ImGui::GetFont(), 14.0f,
+    drawList->AddText(ImGui::GetFont(), 16.0f,
         ImVec2(headerPosition.x + 10.0f, headerPosition.y + 8.0f), IM_COL32(8, 30, 25, 255), "N");
-    drawList->AddText(ImGui::GetFont(), 17.0f,
+    drawList->AddText(ImGui::GetFont(), 19.0f,
         ImVec2(headerPosition.x + 46.0f, headerPosition.y), IM_COL32(237, 244, 247, 255),
         localized(language, keyboard::ui_text::TextId::OptionsTitle));
-    drawList->AddText(ImGui::GetFont(), 10.0f,
+    drawList->AddText(ImGui::GetFont(), 12.0f,
         ImVec2(headerPosition.x + 46.0f, headerPosition.y + 23.0f),
         IM_COL32(101, 119, 132, 255), "CONTROLLER  /  INPUT SETTINGS");
     const float closeWidth = 96.0f;
     ImGui::SetCursorScreenPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() -
         ImGui::GetStyle().WindowPadding.x - closeWidth, headerPosition.y + 3.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.62f, 0.14f, 0.16f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.78f, 0.19f, 0.21f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.10f, 0.12f, 1.0f));
     if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::Close), ImVec2(closeWidth, 30.0f))) {
         m_actions.setOptionsOpen(false);
     }
+    ImGui::PopStyleColor(3);
     ImGui::SetCursorScreenPos(ImVec2(headerPosition.x, headerPosition.y + 39.0f));
     ImGui::Separator();
 
@@ -104,19 +108,25 @@ void SettingsUi::draw(const keyboard::AppUiState &state) {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerPositionAdjustment));
-    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerHorizontalOffset));
-    if (m_inputSession.sliderFloat("##pointer-offset-x", ImVec2(-FLT_MIN, 30.0f),
-                                   edited.pointerOffsetXPercent,
-                                   -keyboard::kMaximumPointerOffsetPercent,
-                                   keyboard::kMaximumPointerOffsetPercent, "%.1f%%")) {
-        settingsChanged = true;
-    }
-    ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerVerticalOffset));
-    if (m_inputSession.sliderFloat("##pointer-offset-y", ImVec2(-FLT_MIN, 30.0f),
-                                   edited.pointerOffsetYPercent,
-                                   -keyboard::kMaximumPointerOffsetPercent,
-                                   keyboard::kMaximumPointerOffsetPercent, "%.1f%%")) {
-        settingsChanged = true;
+    if (ImGui::BeginTable("pointer-offset-sliders", 2,
+                          ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoPadOuterX)) {
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerHorizontalOffset));
+        if (m_inputSession.sliderFloat("##pointer-offset-x", ImVec2(-FLT_MIN, 30.0f),
+                                       edited.pointerOffsetXPercent,
+                                       -keyboard::kMaximumPointerOffsetPercent,
+                                       keyboard::kMaximumPointerOffsetPercent, "%.1f%%")) {
+            settingsChanged = true;
+        }
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(localized(language, keyboard::ui_text::TextId::PointerVerticalOffset));
+        if (m_inputSession.sliderFloat("##pointer-offset-y", ImVec2(-FLT_MIN, 30.0f),
+                                       edited.pointerOffsetYPercent,
+                                       -keyboard::kMaximumPointerOffsetPercent,
+                                       keyboard::kMaximumPointerOffsetPercent, "%.1f%%")) {
+            settingsChanged = true;
+        }
+        ImGui::EndTable();
     }
     ImGui::TextWrapped("%s", localized(language, keyboard::ui_text::TextId::PointerOffsetHint));
 
