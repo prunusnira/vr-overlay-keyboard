@@ -86,6 +86,7 @@ constexpr std::array<TextTriple, static_cast<std::size_t>(TextId::Count)> kTexts
     {"영어", "英語", "English"},
     {"Caps Lock", "Caps Lock", "Caps Lock"},
     {"왼쪽 Shift", "左 Shift", "Left Shift"},
+    {"오른쪽 Shift", "右 Shift", "Right Shift"},
     {"입력 언어 추가 필요", "入力言語の追加が必要です", "Input language required"},
     {"이 입력기는 설치되어 있지 않습니다. Windows 설정 > 시간 및 언어 > 언어 및 지역에서 입력 언어를 추가하세요.",
      "この入力方式はインストールされていません。Windows の設定 > 時刻と言語 > 言語と地域で入力言語を追加してください。",

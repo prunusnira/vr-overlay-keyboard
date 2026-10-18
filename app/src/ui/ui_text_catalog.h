@@ -63,6 +63,7 @@ enum class TextId {
     KeyboardLanguageEnglish,
     CapsLock,
     LeftShift,
+    RightShift,
     MissingImeTitle,
     MissingImeBody,
     Count,

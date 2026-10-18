@@ -85,10 +85,27 @@ bool languageButtonIsActive(const keyboard::AppUiState &state, keyboard::Keyboar
 
 void drawKeyLegend(const keyboard::KeyboardKeyDefinition &key,
                    keyboard::KeyboardLayoutKind layout,
+                   bool shiftActive,
+                   bool capsLockEnabled,
                    const ImVec2 &minimum,
                    const ImVec2 &maximum) {
     const char *primary = keyboard::primaryKeyLabel(key, layout);
     const char *secondary = keyboard::secondaryKeyLabel(key, layout);
+    std::string dynamicPrimary;
+    if (layout == keyboard::KeyboardLayoutKind::KoreanDubeolsik) {
+        if (shiftActive && secondary && *secondary) {
+            std::swap(primary, secondary);
+        }
+    } else if (key.code >= keyboard::KeyCode::A && key.code <= keyboard::KeyCode::Z) {
+        const bool uppercase = shiftActive != capsLockEnabled;
+        const char letter = static_cast<char>(
+            (uppercase ? 'A' : 'a') + static_cast<int>(key.code) - static_cast<int>(keyboard::KeyCode::A));
+        dynamicPrimary.assign(1, letter);
+        primary = dynamicPrimary.c_str();
+        secondary = nullptr;
+    } else if (shiftActive && secondary && *secondary) {
+        std::swap(primary, secondary);
+    }
     ImDrawList *drawList = ImGui::GetWindowDrawList();
     if (secondary && *secondary) {
         const ImVec2 secondarySize = ImGui::CalcTextSize(secondary);
@@ -948,36 +965,100 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
     if (!useDirectJapaneseKana) {
         resetKanaComposition();
     }
-    const std::vector<keyboard::KeyboardRow> &rows = keyboard::keyboardRows();
-    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const std::vector<keyboard::KeyboardRowDefinition> &rows = keyboard::keyboardRows();
+    constexpr float kKeyboardButtonSpacing = 0.0f;
     const float availableWidth = ImGui::GetContentRegionAvail().x;
+    struct RowMetrics {
+        float keyWidthUnits = 0.0f;
+        float leadingCharacterOffsetUnits = 0.0f;
+        float controlWidth = 0.0f;
+    };
+    std::vector<RowMetrics> rowMetrics;
+    rowMetrics.reserve(rows.size());
+    float qwertyRowWidthUnits = 0.0f;
+    for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
+        const keyboard::KeyboardRowDefinition &rowDefinition = rows[rowIndex];
+        const bool bottomRow = rowIndex + 1 == rows.size();
+        RowMetrics metrics{};
+        bool foundFirstCharacter = false;
+        for (const keyboard::KeyboardKeyDefinition &key : rowDefinition.keys) {
+            metrics.keyWidthUnits += key.widthUnits;
+            if (!foundFirstCharacter) {
+                if (key.kind == keyboard::KeyboardKeyKind::Character) {
+                    foundFirstCharacter = true;
+                } else {
+                    metrics.leadingCharacterOffsetUnits += key.widthUnits;
+                }
+            }
+        }
+        metrics.controlWidth = bottomRow ? 116.0f + 156.0f : 0.0f;
+        if (rowDefinition.firstCharacterOffsetUnits &&
+            *rowDefinition.firstCharacterOffsetUnits == 0.0f) {
+            qwertyRowWidthUnits = metrics.keyWidthUnits;
+        }
+        rowMetrics.push_back(metrics);
+    }
+    auto calculateKeyboardBounds = [&](float keyWidth, std::vector<float> *rowStartOffsets) {
+        float left = 0.0f;
+        float right = qwertyRowWidthUnits * keyWidth;
+        if (rowStartOffsets) {
+            rowStartOffsets->assign(rows.size(), 0.0f);
+        }
+        for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
+            const keyboard::KeyboardRowDefinition &rowDefinition = rows[rowIndex];
+            const RowMetrics &metrics = rowMetrics[rowIndex];
+            const float rowWidth = metrics.keyWidthUnits * keyWidth + metrics.controlWidth;
+            const float rowStart = rowDefinition.firstCharacterOffsetUnits
+                ? (*rowDefinition.firstCharacterOffsetUnits - metrics.leadingCharacterOffsetUnits) * keyWidth
+                : (qwertyRowWidthUnits * keyWidth - rowWidth) * 0.5f;
+            if (rowStartOffsets) {
+                (*rowStartOffsets)[rowIndex] = rowStart;
+            }
+            left = std::min(left, rowStart);
+            right = std::max(right, rowStart + rowWidth);
+        }
+        return std::pair<float, float>{left, right};
+    };
+
+    float keyWidth = kKeyWidth;
+    std::pair<float, float> keyboardBounds = calculateKeyboardBounds(keyWidth, nullptr);
+    if (keyboardBounds.second - keyboardBounds.first > availableWidth) {
+        float lowerBound = 1.0f;
+        float upperBound = kKeyWidth;
+        for (int iteration = 0; iteration < 24; ++iteration) {
+            const float candidate = (lowerBound + upperBound) * 0.5f;
+            const std::pair<float, float> candidateBounds = calculateKeyboardBounds(candidate, nullptr);
+            if (candidateBounds.second - candidateBounds.first <= availableWidth) {
+                lowerBound = candidate;
+            } else {
+                upperBound = candidate;
+            }
+        }
+        keyWidth = lowerBound;
+    }
+    std::vector<float> rowStartOffsets;
+    keyboardBounds = calculateKeyboardBounds(keyWidth, &rowStartOffsets);
+    const float keyboardOriginX = ImGui::GetCursorPosX() +
+        std::max(0.0f, (availableWidth - (keyboardBounds.second - keyboardBounds.first)) * 0.5f) -
+        keyboardBounds.first;
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.125f, 0.169f, 0.216f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.275f, 0.302f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.15f, 0.34f, 0.30f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.255f, 0.306f, 1.0f));
     for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
-        const keyboard::KeyboardRow &row = rows[rowIndex];
+        const keyboard::KeyboardRowDefinition &rowDefinition = rows[rowIndex];
+        const keyboard::KeyboardRow &row = rowDefinition.keys;
         const bool bottomRow = rowIndex + 1 == rows.size();
         const float keyHeight = bottomRow ? kBottomRowHeight : kKeyHeight;
         const float optionsWidth = bottomRow ? 116.0f : 0.0f;
         const float diagnosticsWidth = bottomRow ? 156.0f : 0.0f;
-        float widthUnits = 0.0f;
-        for (const keyboard::KeyboardKeyDefinition &key : row) {
-            widthUnits += key.widthUnits;
-        }
-        const float spacingCount = static_cast<float>(row.size() - 1 + (bottomRow ? 2 : 0));
-        const float totalSpacing = spacing * spacingCount;
-        const float controlWidth = optionsWidth + diagnosticsWidth;
-        const float keyWidth = std::min(kKeyWidth,
-            std::max(1.0f, (availableWidth - controlWidth - totalSpacing) / widthUnits));
-        const float totalWidth = keyWidth * widthUnits + totalSpacing + controlWidth;
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (availableWidth - totalWidth) * 0.5f));
+        ImGui::SetCursorPosX(keyboardOriginX + rowStartOffsets[rowIndex]);
         if (bottomRow) {
             if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::OpenOptions),
                                       ImVec2(optionsWidth, keyHeight))) {
                 m_actions.setOptionsOpen(true);
             }
-            ImGui::SameLine(0.0f, spacing);
+            ImGui::SameLine(0.0f, kKeyboardButtonSpacing);
         }
         for (std::size_t column = 0; column < row.size(); ++column) {
             const keyboard::KeyboardKeyDefinition &key = row[column];
@@ -990,7 +1071,7 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
                 activated = m_inputSession.button("##keyboard-key", size);
                 const ImVec2 minimum = ImGui::GetItemRectMin();
                 const ImVec2 maximum = ImGui::GetItemRectMax();
-                drawKeyLegend(key, layout, minimum, maximum);
+                drawKeyLegend(key, layout, m_shiftForNextKey, m_capsLockEnabled, minimum, maximum);
                 if (activated) {
                     if (useWindowsIme) {
                         resetHangulComposition();
@@ -1041,12 +1122,12 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
                 }
                 break;
             case keyboard::KeyboardKeyKind::CapsLock:
-                if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::CapsLock), size)) {
+                if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::CapsLock), size,
+                                          m_capsLockEnabled)) {
                     if (useWindowsIme) {
                         sendKey(key.code);
-                    } else {
-                        m_capsLockEnabled = !m_capsLockEnabled;
                     }
+                    m_capsLockEnabled = !m_capsLockEnabled;
                 }
                 break;
             case keyboard::KeyboardKeyKind::Enter:
@@ -1063,12 +1144,17 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
                 }
                 break;
             case keyboard::KeyboardKeyKind::Shift:
-                if (m_inputSession.button(localized(uiLanguage, m_shiftForNextKey
-                        ? keyboard::ui_text::TextId::ShiftOn
-                        : keyboard::ui_text::TextId::LeftShift), size, m_shiftForNextKey)) {
+            case keyboard::KeyboardKeyKind::RightShift: {
+                const keyboard::ui_text::TextId shiftLabel = m_shiftForNextKey
+                    ? keyboard::ui_text::TextId::ShiftOn
+                    : key.kind == keyboard::KeyboardKeyKind::RightShift
+                        ? keyboard::ui_text::TextId::RightShift
+                        : keyboard::ui_text::TextId::LeftShift;
+                if (m_inputSession.button(localized(uiLanguage, shiftLabel), size, m_shiftForNextKey)) {
                     m_shiftForNextKey = !m_shiftForNextKey;
                 }
                 break;
+            }
             case keyboard::KeyboardKeyKind::KoreanMode:
                 if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::KoreanMode), size,
                                           layout == keyboard::KeyboardLayoutKind::KoreanDubeolsik,
@@ -1114,11 +1200,11 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
             ImGui::PopID();
             ImGui::PopID();
             if (column + 1 < row.size()) {
-                ImGui::SameLine(0.0f, spacing);
+                ImGui::SameLine(0.0f, kKeyboardButtonSpacing);
             }
         }
         if (bottomRow) {
-            ImGui::SameLine(0.0f, spacing);
+            ImGui::SameLine(0.0f, kKeyboardButtonSpacing);
             if (m_inputSession.button(localized(uiLanguage, keyboard::ui_text::TextId::InputDiagnostics),
                                       ImVec2(diagnosticsWidth, keyHeight))) {
                 m_diagnosticsExpanded = !m_diagnosticsExpanded;
