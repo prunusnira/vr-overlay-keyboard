@@ -32,7 +32,7 @@ Download it from the [GitHub Releases page](https://github.com/prunusnira/vr-ove
 4. Enable OSC in VRChat, then select **Chat** to send the text immediately.
 5. To move the overlay, point at it and hold **Grip** while moving your controller. While holding Grip, use that controller's thumbstick to adjust the overlay size and distance.
 
-When the app does not have Windows keyboard focus, the **Focus input** button selects the in-app editor without changing the Windows foreground window. Korean and Japanese virtual keys are composed locally; activate the desktop window yourself to use native Japanese IME features such as kanji conversion.
+When another app owns Windows keyboard focus, virtual keys still target this app's editor, and Korean and Japanese keys are composed locally. Activate the desktop window yourself to use native Japanese IME features such as kanji conversion.
 
 ## Options
 

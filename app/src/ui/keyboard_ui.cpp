@@ -335,11 +335,6 @@ void KeyboardUi::draw(const keyboard::AppUiState &state, bool applicationIsForeg
         ImGui::TableSetupColumn("keyboard-actions", ImGuiTableColumnFlags_WidthStretch, 0.56f);
         ImGui::TableSetupColumn("keyboard-languages", ImGuiTableColumnFlags_WidthStretch, 0.44f);
         ImGui::TableNextColumn();
-        if (m_inputSession.button(localized(language, keyboard::ui_text::TextId::FocusInput),
-                                  ImVec2(158.0f, 34.0f))) {
-            requestEditorFocus();
-        }
-        ImGui::SameLine();
         const bool overlayVisible = state.overlayVisible;
         const char *toggleLabel = localized(language, overlayVisible
             ? keyboard::ui_text::TextId::HideOverlay
@@ -488,13 +483,6 @@ void KeyboardUi::dispatchPointerEvent(const keyboard::PointerEvent &event) {
 
 bool KeyboardUi::isVirtualControlAt(int x, int y) const {
     return m_inputSession.isVirtualControlAt(x, y);
-}
-
-void KeyboardUi::requestEditorFocus() {
-    // 컨트롤러 포커스 버튼은 앱 내부 편집기만 선택하고 Windows 전경 창은 바꾸지 않는다.
-    m_editorFocusArmed = true;
-    m_focusEditorNextFrame = true;
-    appendLog("Virtual keyboard input focused. Windows foreground was not changed.");
 }
 
 void KeyboardUi::setCompositionCancelCallback(std::function<void()> callback) {
@@ -807,6 +795,7 @@ void KeyboardUi::drawInputLanguages(const keyboard::AppUiState &state,
             resetKanaComposition();
             m_pendingKanaInput.clear();
             m_directJapaneseHiraganaModeOverrideActive = false;
+            m_foregroundJapaneseImeRequested = false;
             std::string error;
             const keyboard::InputLanguageActivationResult result =
                 m_actions.selectKeyboardLanguage(buttons[index].language, &error);
@@ -820,8 +809,10 @@ void KeyboardUi::drawInputLanguages(const keyboard::AppUiState &state,
                     m_directHangulModeOverrideActive = true;
                     m_directHangulModeOverrideEnabled = true;
                 } else if (buttons[index].language == keyboard::KeyboardLanguage::Japanese) {
-                    // Use app-local Hiragana until native Japanese IME mode is ready.
-                    m_directJapaneseHiraganaModeOverrideActive = true;
+                    // The foreground IME shortcut is already queued; do not route early keys
+                    // into app-local kana while the mode snapshot catches up.
+                    m_directJapaneseHiraganaModeOverrideActive = !m_applicationIsForeground;
+                    m_foregroundJapaneseImeRequested = m_applicationIsForeground;
                 }
             }
         }
@@ -920,6 +911,7 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
         !m_pendingHangulInput.empty();
     const bool localKanaInputActive = m_kanaComposer.hasActiveComposition() ||
         !m_pendingKanaInput.empty();
+    const bool nativeImeModeReady = state.imeMode.available && state.imeMode.native;
     const bool nativeKoreanMode = language == keyboard::InputLanguageKind::Korean &&
         state.imeMode.available && state.imeMode.native;
     if (language != keyboard::InputLanguageKind::Korean ||
@@ -930,6 +922,14 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
     const bool nativeHiraganaMode = language == keyboard::InputLanguageKind::Japanese &&
         state.imeMode.available && state.imeMode.native && state.imeMode.fullShape &&
         !state.imeMode.katakana;
+    if (language != keyboard::InputLanguageKind::Japanese) {
+        m_foregroundJapaneseImeRequested = false;
+    } else if (m_foregroundJapaneseImeRequested && nativeImeModeReady) {
+        m_foregroundJapaneseImeRequested = false;
+    } else if (m_foregroundJapaneseImeRequested && !m_applicationIsForeground) {
+        m_foregroundJapaneseImeRequested = false;
+        m_directJapaneseHiraganaModeOverrideActive = true;
+    }
     if (language != keyboard::InputLanguageKind::Japanese ||
         (m_applicationIsForeground && nativeHiraganaMode && !localKanaInputActive)) {
         m_directJapaneseHiraganaModeOverrideActive = false;
@@ -945,13 +945,12 @@ void KeyboardUi::drawKeyboard(const keyboard::AppUiState &state, keyboard::UiLan
     const bool languageSupportsNativeIme =
         language == keyboard::InputLanguageKind::Korean ||
         language == keyboard::InputLanguageKind::Japanese;
-    const bool nativeImeModeReady = state.imeMode.available && state.imeMode.native;
     const bool localModeOverrideActive =
         (language == keyboard::InputLanguageKind::Korean && m_directHangulModeOverrideActive) ||
         (language == keyboard::InputLanguageKind::Japanese && m_directJapaneseHiraganaModeOverrideActive);
     const bool localCompositionActive = localHangulInputActive || localKanaInputActive;
     const bool useWindowsIme = m_applicationIsForeground && m_editorFocusArmed &&
-        languageSupportsNativeIme && nativeImeModeReady &&
+        languageSupportsNativeIme && (nativeImeModeReady || m_foregroundJapaneseImeRequested) &&
         !localModeOverrideActive && !localCompositionActive;
     const bool useDirectHangul = !useWindowsIme &&
         language == keyboard::InputLanguageKind::Korean &&

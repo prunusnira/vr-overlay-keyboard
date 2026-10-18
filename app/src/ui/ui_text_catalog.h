@@ -8,7 +8,6 @@ enum class TextId {
     WindowTitle,
     Intro,
     ChatboxText,
-    FocusInput,
     ShowOverlay,
     HideOverlay,
     ClearInput,

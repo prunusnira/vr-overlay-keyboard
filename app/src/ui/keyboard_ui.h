@@ -44,7 +44,6 @@ private:
         int y = -1;
     };
 
-    void requestEditorFocus();
     void sendKey(keyboard::KeyCode key, bool withShift = false);
     void queueVirtualText(const std::string &text);
     void queueVirtualKey(ImGuiKey key);
@@ -90,6 +89,7 @@ private:
     bool m_directHangulModeOverrideActive = false;
     bool m_directHangulModeOverrideEnabled = false;
     bool m_directJapaneseHiraganaModeOverrideActive = false;
+    bool m_foregroundJapaneseImeRequested = false;
     bool m_hangulRangeActive = false;
     int m_hangulRangeStart = -1;
     int m_hangulRangeEnd = -1;
